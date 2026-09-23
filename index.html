@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PHE Panel — Maintenance Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg-a:#EAF2FF;
+  --bg-b:#F7FAFF;
+  --panel:#FFFFFF;
+  --ink:#101B2D;
+  --ink-soft:#6B7A93;
+  --line:#E7ECF6;
+  --hero-a:#3F8CFF;
+  --hero-b:#1447E6;
+  --hero-c:#7FD1FF;
+  --primary:#1447E6;
+  --primary-ink:#FFFFFF;
+  --teal:#0E9F8E;
+  --teal-bg:#E3F8F3;
+  --pink:#FF3D8A;
+  --pink-bg:#FFE7F1;
+  --amber:#FF9A2E;
+  --amber-bg:#FFF1DE;
+  --nok:#EF4444;
+  --nok-bg:#FEE9E8;
+  --ok:#12B76A;
+  --ok-bg:#E4F9EE;
+  --open:#FF9A2E;
+  --open-bg:#FFF1DE;
+  --radius:20px;
+  --radius-sm:12px;
+  --shadow:0 10px 28px -12px rgba(20,71,230,.18), 0 2px 8px rgba(16,27,45,.05);
+  --shadow-sm:0 4px 14px -6px rgba(16,27,45,.10);
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+body{
+  margin:0; color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased;
+  background:linear-gradient(180deg,var(--bg-a) 0%, var(--bg-b) 30%, var(--bg-b) 100%);
+  background-attachment:fixed;
+  padding-bottom:calc(78px + env(safe-area-inset-bottom,0px));
+}
+
+/* ---- hero ---- */
+.hero{
+  position:relative; overflow:hidden;
+  padding:calc(18px + env(safe-area-inset-top,0px)) 18px 22px;
+  background:radial-gradient(120% 140% at 85% -10%, var(--hero-c) 0%, transparent 45%),
+             linear-gradient(120deg, var(--hero-a) 0%, var(--hero-b) 100%);
+  border-radius:0 0 28px 28px;
+  box-shadow:var(--shadow);
+}
+.hero-top{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px;}
+.hero-brand{display:flex; align-items:center; gap:10px;}
+.hero-brand .mark{
+  width:38px; height:38px; border-radius:12px; background:rgba(255,255,255,.22);
+  display:flex; align-items:center; justify-content:center; flex:none; backdrop-filter:blur(2px);
+}
+.hero-brand .mark svg{width:20px; height:20px; color:#fff;}
+.hero-brand h1{margin:0; font-size:16px; font-weight:750; color:#fff;}
+.hero-brand p{margin:1px 0 0; font-size:11px; color:rgba(255,255,255,.78); font-weight:600; letter-spacing:.3px;}
+.hero-gear{
+  width:36px; height:36px; border-radius:11px; background:rgba(255,255,255,.18); border:none;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; flex:none;
+}
+.hero-gear svg{width:18px; height:18px; color:#fff;}
+
+.hero-stats{
+  display:flex; align-items:stretch; gap:0; background:rgba(255,255,255,.14);
+  border:1px solid rgba(255,255,255,.22); border-radius:16px; padding:12px 14px; backdrop-filter:blur(3px);
+}
+.hero-stats .seg1{flex:1;}
+.hero-stats .divider{width:1px; background:rgba(255,255,255,.28); margin:0 14px;}
+.hero-stats .lbl{display:flex; align-items:center; gap:6px; color:rgba(255,255,255,.92); font-size:12.5px; font-weight:650;}
+.hero-stats .lbl svg{width:14px; height:14px;}
+.hero-bar{height:7px; border-radius:5px; background:rgba(255,255,255,.28); margin-top:9px; overflow:hidden;}
+.hero-bar i{display:block; height:100%; background:linear-gradient(90deg,#7FFFD4,#12B76A); border-radius:5px;}
+.hero-num{color:#fff; font-family:var(--mono); font-size:20px; font-weight:700;}
+.hero-sub{color:rgba(255,255,255,.75); font-size:10.5px; margin-top:2px; font-weight:600;}
+
+/* ---- content ---- */
+main{padding:18px 16px 8px; max-width:640px; margin:0 auto;}
+main.fade-target{animation:fadein .2s ease;}
+@keyframes fadein{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;}}
+
+h2.section-title{font-size:16.5px; font-weight:750; margin:4px 2px 12px; color:var(--ink); display:flex; align-items:center; gap:8px;}
+
+.panel{
+  background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:18px; margin-bottom:16px; box-shadow:var(--shadow-sm);
+}
+.panel.accent-teal{border-top:3px solid var(--primary);}
+.panel h2{margin:0 0 4px; font-size:15.5px; font-weight:750;}
+.panel .sub{color:var(--ink-soft); font-size:12.5px; margin:0 0 16px; line-height:1.5;}
+
+label{display:block; font-size:11.5px; font-weight:700; color:var(--ink-soft); margin:14px 0 6px;}
+label:first-of-type{margin-top:0;}
+select, input[type=text], input[type=number], input[type=date], textarea{
+  width:100%; padding:12px 13px; border:1.5px solid var(--line); border-radius:var(--radius-sm);
+  font-size:15px; background:var(--bg-b); color:var(--ink); font-family:var(--sans);
+}
+input[type=number], input[type=date]{font-family:var(--mono); font-size:14px;}
+select:focus, input:focus, textarea:focus{outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(20,71,230,.12);}
+textarea{resize:vertical; min-height:64px; font-family:var(--sans);}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+
+.btn{
+  appearance:none; border:none; border-radius:14px; padding:13px 18px; font-size:14.5px;
+  font-weight:750; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  font-family:var(--sans); transition:transform .12s;
+}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:linear-gradient(120deg,var(--hero-a),var(--primary)); color:#fff; width:100%; box-shadow:0 8px 18px -6px rgba(20,71,230,.45);}
+.btn-primary:disabled{opacity:.5; box-shadow:none;}
+.btn-ghost{background:var(--bg-b); color:var(--primary); border:1.5px solid var(--line);}
+.btn-sm{padding:8px 12px; font-size:12.5px; border-radius:10px;}
+
+.seg{display:flex; background:var(--bg-b); border-radius:14px; padding:4px; margin-bottom:16px; gap:4px;}
+.seg button{flex:1; border:none; background:transparent; color:var(--ink-soft); padding:10px; font-size:13px; font-weight:700; cursor:pointer; border-radius:10px; font-family:var(--sans);}
+.seg button.active{background:var(--panel); color:var(--primary); box-shadow:var(--shadow-sm);}
+
+/* ---- gauge / spec readout ---- */
+.gauge-card{border-radius:16px; padding:14px; margin-bottom:6px; background:linear-gradient(135deg,#EFF5FF,#F7FAFF); border:1px solid var(--line);}
+.gauge-card .flag{color:var(--amber); font-size:11px; font-weight:700; margin-top:6px;}
+.gauge-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:7px; margin-top:4px;}
+.gauge{text-align:center; background:var(--panel); border-radius:12px; padding:9px 3px; box-shadow:var(--shadow-sm);}
+.gauge .k{font-size:9.5px; color:var(--ink-soft); display:block; text-transform:uppercase; letter-spacing:.4px; font-weight:700;}
+.gauge .v{font-family:var(--mono); font-size:13.5px; font-weight:700; display:block; margin-top:3px; color:var(--primary);}
+
+.badge{display:inline-flex; align-items:center; gap:5px; padding:4px 11px; border-radius:20px; font-size:11px; font-weight:800; font-family:var(--sans);}
+.badge::before{content:''; width:6px; height:6px; border-radius:50%; background:currentColor; flex:none;}
+.badge.ok{background:var(--ok-bg); color:var(--ok);}
+.badge.nok{background:var(--nok-bg); color:var(--nok);}
+.badge.open{background:var(--open-bg); color:var(--open);}
+.field-status{font-size:11px; font-weight:700; margin-top:6px; font-family:var(--mono);}
+.field-status.ok{color:var(--ok);}
+.field-status.nok{color:var(--nok);}
+
+.photos{display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-top:6px;}
+.photo-slot{
+  aspect-ratio:1; border:1.5px dashed #C7D4F0; border-radius:14px; position:relative;
+  display:flex; align-items:center; justify-content:center; overflow:hidden; background:var(--bg-b); cursor:pointer;
+}
+.photo-slot img{width:100%; height:100%; object-fit:cover;}
+.photo-slot .plus{font-size:24px; color:var(--primary); font-weight:300;}
+.photo-slot input{position:absolute; inset:0; opacity:0; cursor:pointer;}
+
+.entry{border-radius:16px; padding:13px 14px; margin-bottom:10px; background:var(--panel); box-shadow:var(--shadow-sm); border-left:4px solid var(--line);}
+.entry.st-ok{border-left-color:var(--ok);}
+.entry.st-nok{border-left-color:var(--nok);}
+.entry.st-open{border-left-color:var(--open);}
+.entry .top-row{display:flex; justify-content:space-between; align-items:flex-start; gap:8px;}
+.entry .who{font-size:13px; font-weight:750;}
+.entry .when{font-size:11px; color:var(--ink-soft); margin-top:1px; font-family:var(--mono);}
+.entry .detail{font-size:12.5px; color:var(--ink-soft); margin-top:8px; line-height:1.55; font-family:var(--mono);}
+.entry .thumbs{display:flex; gap:6px; margin-top:9px;}
+.entry .thumbs img{width:46px; height:46px; object-fit:cover; border-radius:10px; border:1px solid var(--line);}
+.empty{color:var(--ink-soft); font-size:13px; text-align:center; padding:28px 10px;}
+.note{background:var(--amber-bg); color:#8A5A00; border-radius:14px; padding:12px 14px; font-size:12.5px; margin-bottom:16px; line-height:1.55; border:1px solid #FBD9A6;}
+
+.settings-row{display:grid; grid-template-columns:1.25fr .7fr .7fr .7fr .95fr auto; gap:6px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); font-size:12px;}
+.settings-row.head{font-weight:750; color:var(--ink-soft); font-size:10px; text-transform:uppercase; letter-spacing:.4px;}
+.settings-row input{padding:7px 5px; font-size:12px; border-radius:8px;}
+
+.filter-row{display:flex; gap:8px; margin-bottom:14px;}
+.filter-row select{flex:1;}
+.search-row{display:flex; gap:8px; margin-bottom:12px;}
+.search-row input{flex:1;}
+.storage-meter{height:6px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:12px;}
+.storage-meter i{display:block; height:100%; background:linear-gradient(90deg,var(--hero-a),var(--primary));}
+.storage-txt{font-size:11px; color:var(--ink-soft); margin-top:6px; font-family:var(--mono);}
+.dash-toolbar{display:flex; gap:8px; margin-bottom:4px;}
+.dash-toolbar .btn{flex:1;}
+
+/* ---- lock / dashboard ---- */
+.lockpanel{text-align:center; padding:34px 16px;}
+.lockpanel .lockicon{
+  width:56px; height:56px; border-radius:18px; background:linear-gradient(120deg,var(--hero-a),var(--primary)); color:#fff;
+  display:flex; align-items:center; justify-content:center; margin:0 auto 16px; box-shadow:0 10px 20px -8px rgba(20,71,230,.45);
+}
+.lockpanel .lockicon svg{width:26px; height:26px;}
+.lockpanel input{text-align:center; letter-spacing:3px; font-family:var(--mono); font-weight:700; max-width:220px; margin:0 auto;}
+.lockpanel .btn{max-width:220px; margin:14px auto 0;}
+.lockpanel .lockerr{color:var(--nok); font-size:12px; margin-top:8px; font-family:var(--mono); min-height:16px;}
+
+.stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:11px; margin-top:2px;}
+.stat-card{
+  background:var(--bg-b); border:1px solid var(--line); border-radius:16px; padding:13px 14px;
+  cursor:pointer; transition:transform .12s, box-shadow .12s;
+}
+.stat-card:active{transform:scale(.97);}
+.stat-card:hover{box-shadow:var(--shadow-sm);}
+.stat-card .k{font-size:10.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; display:block; font-weight:700;}
+.stat-card .v{font-family:var(--mono); font-size:22px; font-weight:750; color:var(--primary); display:block; margin-top:5px;}
+.stat-card .v small{font-size:12px; font-weight:700; color:var(--ink-soft);}
+
+.chart-box{position:relative; height:220px; margin-top:8px;}
+.chart-box.tall{height:260px;}
+
+/* ---- beranda: horizontal scroller & promo/attention cards ---- */
+.hscroll{display:flex; gap:12px; overflow-x:auto; padding:2px 2px 10px; margin:0 -2px 6px; scroll-snap-type:x proximity; scrollbar-width:none;}
+.hscroll::-webkit-scrollbar{display:none;}
+.shortcut-card{
+  flex:none; width:104px; scroll-snap-align:start; background:var(--panel); border-radius:18px; padding:14px 10px;
+  text-align:center; box-shadow:var(--shadow-sm); cursor:pointer; border:1px solid var(--line);
+}
+.shortcut-card .ic{
+  width:42px; height:42px; border-radius:13px; display:flex; align-items:center; justify-content:center; margin:0 auto 9px;
+}
+.shortcut-card .ic svg{width:20px; height:20px; color:#fff;}
+.shortcut-card .lbl{font-size:12px; font-weight:750; color:var(--ink);}
+.shortcut-card .sub{font-size:9.5px; color:var(--ink-soft); margin-top:1px; font-weight:600;}
+
+.attn-card{
+  flex:none; width:220px; scroll-snap-align:start; background:var(--panel); border-radius:20px; overflow:hidden;
+  box-shadow:var(--shadow); cursor:pointer; border:1px solid var(--line);
+}
+.attn-card .top{padding:16px 16px 34px; position:relative; color:#fff;}
+.attn-card .top.nok{background:linear-gradient(120deg,#FF6B6B,#EF4444);}
+.attn-card .top.open{background:linear-gradient(120deg,#FFB35C,#FF9A2E);}
+.attn-card .top .name{font-size:13.5px; font-weight:750;}
+.attn-card .top .tag{position:absolute; top:14px; right:14px; background:rgba(255,255,255,.24); font-size:10px; font-weight:800; padding:4px 9px; border-radius:20px;}
+.attn-card .body{padding:12px 14px 14px; margin-top:-20px; background:var(--panel); border-radius:18px 18px 0 0;}
+.attn-card .body .info{font-size:11.5px; color:var(--ink-soft); font-family:var(--mono); line-height:1.5;}
+.attn-card .body .cta{margin-top:9px; font-size:11.5px; font-weight:750; color:var(--primary); display:flex; align-items:center; gap:4px;}
+.hero-empty{color:rgba(255,255,255,.85); font-size:12.5px; padding:6px 2px;}
+.attn-empty{background:var(--teal-bg); color:var(--teal); border-radius:16px; padding:16px; font-size:12.5px; font-weight:650; text-align:center;}
+
+/* ---- bottom nav ---- */
+nav.bottomnav{
+  position:fixed; left:0; right:0; bottom:0; z-index:30;
+  background:rgba(255,255,255,.92); backdrop-filter:blur(10px);
+  border-top:1px solid var(--line); box-shadow:0 -6px 20px rgba(16,27,45,.06);
+  padding:9px 6px calc(8px + env(safe-area-inset-bottom,0px));
+  display:flex; justify-content:space-around; align-items:center; max-width:640px; margin:0 auto; left:0; right:0;
+}
+nav.bottomnav button{
+  border:none; background:transparent; display:flex; flex-direction:column; align-items:center; gap:3px;
+  color:#A6B0C3; font-size:10.5px; font-weight:700; cursor:pointer; padding:4px 8px; font-family:var(--sans);
+  flex:1;
+}
+nav.bottomnav button svg{width:22px; height:22px;}
+nav.bottomnav button.active{color:var(--primary);}
+nav.bottomnav button.active svg{color:var(--primary);}
+
+.backlink{display:inline-flex; align-items:center; gap:5px; color:var(--primary); font-size:12.5px; font-weight:700; margin-bottom:14px; cursor:pointer;}
+.backlink svg{width:15px; height:15px;}
+
+.toast{
+  position:fixed; left:50%; bottom:calc(90px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
+  background:var(--ink); color:#fff; padding:11px 18px; border-radius:14px; font-size:13px; z-index:50;
+  opacity:0; pointer-events:none; transition:opacity .2s; font-family:var(--sans); box-shadow:var(--shadow);
+}
+.toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-top">
+    <div class="hero-brand">
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2Z"/><path d="M9 13h6M9 17h4"/></svg></div>
+      <div>
+        <h1>PHE Panel</h1>
+        <p>MAINTENANCE TRACKER</p>
+      </div>
+    </div>
+    <button class="hero-gear" id="hero-gear" title="Standar PHE">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+    </button>
+  </div>
+  <div class="hero-stats" id="hero-stats">
+    <div class="seg1">
+      <div class="lbl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> Kepatuhan Standar</div>
+      <div class="hero-num" id="hero-compliance">–</div>
+      <div class="hero-bar"><i id="hero-bar" style="width:0%"></i></div>
+    </div>
+    <div class="divider"></div>
+    <div class="seg1">
+      <div class="lbl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> Siklus Aktif</div>
+      <div class="hero-num" id="hero-active">–</div>
+      <div class="hero-sub">COP &amp; CIP berjalan</div>
+    </div>
+  </div>
+</header>
+
+<main id="main"></main>
+<div class="toast" id="toast"></div>
+
+<nav class="bottomnav">
+  <button data-tab="beranda" class="active">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/></svg>
+    Beranda
+  </button>
+  <button data-tab="inspeksi">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    Inspeksi
+  </button>
+  <button data-tab="cleaning">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6"/></svg>
+    Cleaning
+  </button>
+  <button data-tab="riwayat">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+    Riwayat
+  </button>
+  <button data-tab="dashboard">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+    Dashboard
+  </button>
+</nav>
+
+<script>
+/* ============ constants ============ */
+const STORAGE_KEY = 'phe_panel_v2';
+// Google Apps Script Web App URL untuk backend CI / Google Drive.
+// Isi dengan URL deployment Apps Script kamu.
+const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbwj5nCze7dqZazH2EvtehX8uTLKewka8DRyN__Z05IFABqZvt_TSz5r3iBPWaSFBbQw/exec';
+const MAX_PHOTO_DIM = 720;
+const JPEG_QUALITY = 0.68;
+let remoteSyncBusy = false;
+let remoteSyncQueued = false;
+
+
+const PHE_LIST = [
+  {id:'heating1', name:'PHE Heating 1'},
+  {id:'heating2', name:'PHE Heating 2'},
+  {id:'heating3', name:'PHE Heating 3'},
+  {id:'heating4', name:'PHE Heating 4'},
+  {id:'preheating1', name:'PHE Pre Heating 1'},
+  {id:'preheating2', name:'PHE Pre Heating 2'},
+  {id:'precooling1', name:'PHE Pre Cooling 1'},
+  {id:'precooling2', name:'PHE Pre Cooling 2'},
+  {id:'cooling1', name:'PHE Cooling 1'},
+  {id:'cooling2', name:'PHE Cooling 2'},
+];
+
+const DEFAULT_STANDARDS = {
+  heating1:    {qtyPlate:81,  minPress:314, maxPress:333, airMin:3,   prdkMin:6,   prdkMax:6,   verified:true},
+  heating2:    {qtyPlate:81,  minPress:314, maxPress:333, airMin:3,   prdkMin:6,   prdkMax:6,   verified:false},
+  heating3:    {qtyPlate:79,  minPress:305, maxPress:324, airMin:3,   prdkMin:6,   prdkMax:6,   verified:true},
+  heating4:    {qtyPlate:82,  minPress:318, maxPress:337, airMin:3,   prdkMin:6,   prdkMax:6,   verified:false},
+  preheating1: {qtyPlate:40,  minPress:155, maxPress:165, airMin:3,   prdkMin:4,   prdkMax:5,   verified:true},
+  preheating2: {qtyPlate:40,  minPress:155, maxPress:165, airMin:3,   prdkMin:4,   prdkMax:5,   verified:true},
+  precooling1: {qtyPlate:41,  minPress:159, maxPress:168, airMin:1.5, prdkMin:1.5, prdkMax:2,   verified:true},
+  precooling2: {qtyPlate:41,  minPress:159, maxPress:168, airMin:1.5, prdkMin:1.5, prdkMax:2,   verified:true},
+  cooling1:    {qtyPlate:115, minPress:452, maxPress:473, airMin:1.5, prdkMin:6,   prdkMax:6,   verified:true},
+  cooling2:    {qtyPlate:115, minPress:452, maxPress:473, airMin:1.5, prdkMin:6,   prdkMax:6,   verified:true},
+};
+
+/* ============ storage: local cache + Google Drive backend ============ */
+const EMPTY_STORE = () => ({standards:{...DEFAULT_STANDARDS}, inspections:[], activities:[]});
+function loadStore(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){ console.error(e); }
+  return EMPTY_STORE();
+}
+function saveLocalStore(){
+  try{
+    // Foto Drive URL tidak membebani localStorage seperti base64.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(STORE));
+    return true;
+  }catch(e){
+    console.error(e);
+    toast('Cache browser penuh. Data utama tetap diarahkan ke Google Drive.');
+    return false;
+  }
+}
+async function apiFetch(url, options={}){
+  if(!GAS_API_URL || GAS_API_URL.includes('PASTE_GOOGLE')) throw new Error('GAS_API_URL belum diisi.');
+  const res = await fetch(url, options);
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const text = await res.text();
+  try { return JSON.parse(text); } catch(e) { throw new Error('Response backend bukan JSON.'); }
+}
+function gasGet(action){ return apiFetch(GAS_API_URL+'?action='+encodeURIComponent(action)+'&_='+Date.now()); }
+async function uploadPhotoToDrive(dataUrl, index){
+  const raw = String(dataUrl||'');
+  if(!raw.startsWith('data:image/')) return raw;
+  const mime = (raw.match(/^data:([^;]+);base64,/)||[])[1] || 'image/jpeg';
+  const payload = {action:'uploadPhoto', photoData:raw, mimeType:mime,
+    fileName:'PHE_'+Date.now()+'_'+index+'.jpg', subFolder:'PHE_Tracker', submitter:'PHE Tracker'};
+  const r = await apiFetch(GAS_API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
+  if(!r || !r.ok) throw new Error(r?.error || 'Upload foto gagal');
+  return r.directUrl || r.viewUrl;
+}
+async function preparePhotosForRemote(){
+  for(const a of STORE.activities){
+    for(const key of ['photosBefore','photosAfter']){
+      const arr = Array.isArray(a[key]) ? a[key] : [];
+      for(let i=0;i<arr.length;i++){
+        if(typeof arr[i]==='string' && arr[i].startsWith('data:image/')){
+          arr[i] = await uploadPhotoToDrive(arr[i], a.id+'_'+key+'_'+i);
+        }
+      }
+    }
+  }
+}
+async function pushStoreToDrive(){
+  if(remoteSyncBusy){ remoteSyncQueued=true; return; }
+  remoteSyncBusy=true;
+  try{
+    await preparePhotosForRemote();
+    saveLocalStore();
+    const payload = {action:'savePHE', pheData:STORE};
+    const r = await apiFetch(GAS_API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
+    if(!r || !r.ok) throw new Error(r?.error || 'Gagal menyimpan PHE ke Drive');
+  }catch(e){ console.error(e); toast('Sync Drive gagal: '+e.message); }
+  finally{
+    remoteSyncBusy=false;
+    if(remoteSyncQueued){ remoteSyncQueued=false; pushStoreToDrive(); }
+  }
+}
+function saveStore(){
+  const ok = saveLocalStore();
+  if(ok) pushStoreToDrive();
+  return ok;
+}
+async function syncFromDrive(){
+  try{
+    const r = await gasGet('getPHE');
+    if(r && r.ok && r.data){
+      STORE = {...EMPTY_STORE(), ...r.data};
+      STORE.standards = {...DEFAULT_STANDARDS, ...(r.data.standards||{})};
+      STORE.inspections = Array.isArray(r.data.inspections)?r.data.inspections:[];
+      STORE.activities = Array.isArray(r.data.activities)?r.data.activities:[];
+      saveLocalStore();
+      render();
+      toast('Data PHE tersinkron dari Google Drive.');
+    }
+  }catch(e){
+    console.warn('Remote sync tidak tersedia, memakai cache lokal:', e.message);
+    toast('Mode offline: memakai data perangkat ini.');
+  }
+}
+let STORE = loadStore();
+PHE_LIST.forEach(p=>{ if(!STORE.standards[p.id]) STORE.standards[p.id] = {...DEFAULT_STANDARDS[p.id]}; });
+
+let state = {
+  tab:'beranda',
+  pheInspeksi: PHE_LIST[0].id,
+  pheCOP: PHE_LIST[0].id,
+  pheCIP: PHE_LIST[0].id,
+  copMode:'mulai',
+  cipMode:'mulai',
+  cleaningType:'COP',
+  dashboardUnlocked:false,
+};
+const DASHBOARD_PASSWORD = 'PMBAS1';
+let chartInstances = {};
+
+/* ============ helpers ============ */
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._h); toast._h = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+function fmtDate(ts){ if(!ts) return '-'; const d = new Date(ts); return d.toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}) + ' ' + d.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDateOnly(v){ if(!v) return '-'; const d = new Date(v); return d.toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function pheName(id){ const p = PHE_LIST.find(x=>x.id===id); return p? p.name : id; }
+function num(v){ if(v==='' || v==null) return null; const n = parseFloat(String(v).replace(',','.')); return isNaN(n)? null : n; }
+function uid(){ return 'id'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function resizeImage(file){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = ()=>{ img.onload = ()=>{
+      let w = img.width, h = img.height;
+      if(w > h && w > MAX_PHOTO_DIM){ h = Math.round(h * MAX_PHOTO_DIM/w); w = MAX_PHOTO_DIM; }
+      else if(h > MAX_PHOTO_DIM){ w = Math.round(w * MAX_PHOTO_DIM/h); h = MAX_PHOTO_DIM; }
+      const c = document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      resolve(c.toDataURL('image/jpeg', JPEG_QUALITY));
+    }; img.onerror = reject; img.src = reader.result; };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ============ render root ============ */
+function render(){
+  const main = document.getElementById('main');
+  main.classList.remove('fade-target'); void main.offsetWidth; main.classList.add('fade-target');
+  document.querySelectorAll('nav.bottomnav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===state.tab));
+  if(state.tab==='beranda') renderBeranda(main);
+  else if(state.tab==='inspeksi') renderInspeksi(main);
+  else if(state.tab==='cleaning') renderCleaningTab(main);
+  else if(state.tab==='riwayat') renderRiwayat(main);
+  else if(state.tab==='standar') renderStandar(main);
+  else if(state.tab==='dashboard') renderDashboard(main);
+  updateHero();
+}
+
+function goTab(tab){ state.tab = tab; render(); }
+
+function updateHero(){
+  const compEl = document.getElementById('hero-compliance');
+  const barEl = document.getElementById('hero-bar');
+  const activeEl = document.getElementById('hero-active');
+  if(!compEl) return;
+  const total = STORE.inspections.length;
+  const ok = STORE.inspections.filter(v=>v.status==='OK').length;
+  const pct = total ? Math.round(ok/total*100) : 100;
+  compEl.textContent = total ? pct+'%' : '–';
+  barEl.style.width = (total?pct:0)+'%';
+  const active = STORE.activities.filter(a=>a.status==='open').length;
+  activeEl.textContent = active;
+}
+
+/* ============ Beranda (home) ============ */
+const SHORTCUTS = [
+  {tab:'inspeksi', label:'Inspeksi', sub:'Cek standar', color:'linear-gradient(135deg,#3F8CFF,#1447E6)', icon:'<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'},
+  {tab:'cleaning', label:'COP', sub:'Cleaning out', color:'linear-gradient(135deg,#12D6C4,#0E9F8E)', icon:'<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6"/>', setType:'COP'},
+  {tab:'cleaning', label:'CIP Lokal', sub:'Cleaning in place', color:'linear-gradient(135deg,#FFB35C,#FF9A2E)', icon:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>', setType:'CIP'},
+  {tab:'riwayat', label:'Riwayat', sub:'Semua data', color:'linear-gradient(135deg,#B26BFF,#7A3FE0)', icon:'<path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>'},
+  {tab:'standar', label:'Standar', sub:'Acuan 10 PHE', color:'linear-gradient(135deg,#FF6FA5,#FF3D8A)', icon:'<path d="M4 21v-7M4 10V3M12 21v-11M12 6V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/>'},
+  {tab:'dashboard', label:'Dashboard', sub:'Grafik & ringkasan', color:'linear-gradient(135deg,#4A5A8A,#1F2A4A)', icon:'<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'},
+];
+
+function buildAttentionList(){
+  const items = [];
+  PHE_LIST.forEach(p=>{
+    const lastInsp = STORE.inspections.find(v=>v.pheId===p.id);
+    if(lastInsp && lastInsp.status==='NOK'){
+      items.push({pheId:p.id, kind:'nok', ts:lastInsp.timestamp, text:`Qty ${lastInsp.actualQty??'-'} · Air ${lastInsp.actualAir??'-'}Bar · Produk ${lastInsp.actualPrdk??'-'}Bar`});
+    }
+    ['COP','CIP'].forEach(type=>{
+      const open = STORE.activities.find(a=>a.pheId===p.id && a.type===type && a.status==='open');
+      if(open){
+        const days = Math.round((Date.now() - new Date(open.startDate))/86400000);
+        items.push({pheId:p.id, kind:'open', type, ts:open.createdAt, text:`${type} berjalan · dimulai ${days} hari lalu`});
+      }
+    });
+  });
+  items.sort((a,b)=>(b.ts||0)-(a.ts||0));
+  return items;
+}
+
+function renderBeranda(main){
+  const attention = buildAttentionList();
+  main.innerHTML = `
+    <h2 class="section-title">Akses Cepat</h2>
+    <div class="hscroll" id="shortcut-scroll">
+      ${SHORTCUTS.map((s,i)=>`<div class="shortcut-card" data-idx="${i}">
+        <div class="ic" style="background:${s.color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${s.icon}</svg></div>
+        <div class="lbl">${s.label}</div>
+        <div class="sub">${s.sub}</div>
+      </div>`).join('')}
+    </div>
+
+    <h2 class="section-title">⚡ Perlu Perhatian</h2>
+    ${attention.length ? `<div class="hscroll">
+      ${attention.slice(0,10).map(it=>`<div class="attn-card" data-phe="${it.pheId}" data-kind="${it.kind}" data-type="${it.type||''}">
+        <div class="top ${it.kind==='nok'?'nok':'open'}">
+          <div class="name">${pheName(it.pheId)}</div>
+          <div class="tag">${it.kind==='nok'?'NOK':'BERJALAN'}</div>
+        </div>
+        <div class="body">
+          <div class="info">${escapeHtml(it.text)}</div>
+          <div class="cta">Lihat detail →</div>
+        </div>
+      </div>`).join('')}
+    </div>` : `<div class="attn-empty">✓ Semua PHE dalam kondisi baik — tidak ada NOK atau siklus terbuka.</div>`}
+
+    <h2 class="section-title" style="margin-top:22px;">Tentang alat ini</h2>
+    <div class="panel">
+      <p class="sub" style="margin-bottom:0;">PHE Panel membantu mencatat Inspeksi, COP, dan CIP Lokal untuk 10 unit plate heat exchanger — lengkap dengan standar acuan, status OK/NOK otomatis, dokumentasi foto, dan dashboard ringkasan. Semua data tersimpan di perangkat ini.</p>
+    </div>
+  `;
+  document.querySelectorAll('#shortcut-scroll .shortcut-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const s = SHORTCUTS[card.dataset.idx];
+      if(s.setType) state.cleaningType = s.setType;
+      goTab(s.tab);
+    });
+  });
+  main.querySelectorAll('.attn-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const pheId = card.dataset.phe, kind = card.dataset.kind, type = card.dataset.type;
+      if(kind==='nok'){ state.pheInspeksi = pheId; goTab('inspeksi'); }
+      else { state.cleaningType = type; if(type==='COP'){ state.pheCOP = pheId; state.copMode='selesai'; } else { state.pheCIP = pheId; state.cipMode='selesai'; } goTab('cleaning'); }
+    });
+  });
+}
+
+/* ============ Cleaning wrapper (COP / CIP toggle) ============ */
+function renderCleaningTab(main){
+  main.innerHTML = `
+    <div class="seg" id="cleaning-type-seg">
+      <button data-type="COP" class="${state.cleaningType==='COP'?'active':''}">COP</button>
+      <button data-type="CIP" class="${state.cleaningType==='CIP'?'active':''}">CIP Lokal</button>
+    </div>
+    <div id="cleaning-body"></div>
+  `;
+  main.querySelectorAll('#cleaning-type-seg button').forEach(b=>{
+    b.addEventListener('click', ()=>{ state.cleaningType = b.dataset.type; render(); });
+  });
+  renderActivity(document.getElementById('cleaning-body'), state.cleaningType);
+}
+
+/* ============ Inspeksi ============ */
+function renderInspeksi(main){
+  const pheId = state.pheInspeksi;
+  const std = STORE.standards[pheId];
+  main.innerHTML = `
+    <div class="panel accent-teal">
+      <h2>Inspeksi PHE</h2>
+      <p class="sub">Cek qty plate, panjang pemasangan, dan tekanan air/produk terhadap standar. Nilai di bawah standar otomatis ditandai NOK.</p>
+      <label>Pilih PHE</label>
+      <select id="sel-phe-insp">${PHE_LIST.map(p=>`<option value="${p.id}" ${p.id===pheId?'selected':''}>${p.name}</option>`).join('')}</select>
+      <div class="gauge-card">
+        <strong style="font-size:11.5px; text-transform:uppercase; letter-spacing:.4px; color:var(--ink-soft);">Standar acuan</strong>
+        ${std.verified? '' : '<div class="flag">⚠ BELUM DIVERIFIKASI — periksa tab Standar</div>'}
+        <div class="gauge-grid">
+          <div class="gauge"><span class="k">Qty</span><span class="v">${std.qtyPlate}</span></div>
+          <div class="gauge"><span class="k">Range mm</span><span class="v">${std.minPress}–${std.maxPress}</span></div>
+          <div class="gauge"><span class="k">Air</span><span class="v">≥${std.airMin}</span></div>
+          <div class="gauge"><span class="k">Produk</span><span class="v">${std.prdkMin===std.prdkMax? '≥'+std.prdkMin : std.prdkMin+'–'+std.prdkMax}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Data aktual</h2>
+      <label>Qty Plate aktual</label>
+      <input type="number" id="insp-qty" placeholder="${std.qtyPlate}">
+      <div class="field-status" id="stat-qty"></div>
+
+      <label>Panjang terpasang (mm)</label>
+      <input type="number" id="insp-press" placeholder="${std.minPress}–${std.maxPress}">
+      <div class="field-status" id="stat-press"></div>
+
+      <div class="row2">
+        <div>
+          <label>Tekanan Air (Bar)</label>
+          <input type="number" step="0.1" id="insp-air">
+          <div class="field-status" id="stat-air"></div>
+        </div>
+        <div>
+          <label>Tekanan Produk (Bar)</label>
+          <input type="number" step="0.1" id="insp-prdk">
+          <div class="field-status" id="stat-prdk"></div>
+        </div>
+      </div>
+
+      <label>Nama teknisi</label>
+      <input type="text" id="insp-tech" placeholder="Nama teknisi" value="${escapeHtml(state.lastTech||'')}">
+
+      <label>Catatan (opsional)</label>
+      <textarea id="insp-notes" placeholder="Catatan tambahan..."></textarea>
+
+      <div id="insp-overall" style="margin-top:14px;"></div>
+      <button class="btn btn-primary" id="insp-save" style="margin-top:12px;">Simpan hasil inspeksi</button>
+    </div>
+
+    <div class="panel">
+      <h2>Riwayat inspeksi — ${pheName(pheId)}</h2>
+      <div id="insp-history"></div>
+    </div>
+  `;
+
+  document.getElementById('sel-phe-insp').addEventListener('change', e=>{ state.pheInspeksi = e.target.value; render(); });
+  ['insp-qty','insp-press','insp-air','insp-prdk'].forEach(id=>document.getElementById(id).addEventListener('input', ()=>evalInspeksi(pheId)));
+  evalInspeksi(pheId);
+  document.getElementById('insp-save').addEventListener('click', ()=>saveInspeksi(pheId));
+  renderInspHistory(pheId);
+}
+
+function evalInspeksi(pheId){
+  const std = STORE.standards[pheId];
+  const qty = num(document.getElementById('insp-qty').value);
+  const press = num(document.getElementById('insp-press').value);
+  const air = num(document.getElementById('insp-air').value);
+  const prdk = num(document.getElementById('insp-prdk').value);
+  const results = {
+    qty: qty===null? null : qty < std.qtyPlate,
+    press: press===null? null : (press < std.minPress || press > std.maxPress),
+    air: air===null? null : air < std.airMin,
+    prdk: prdk===null? null : prdk < std.prdkMin,
+  };
+  setFieldStatus('stat-qty', results.qty);
+  setFieldStatus('stat-press', results.press);
+  setFieldStatus('stat-air', results.air);
+  setFieldStatus('stat-prdk', results.prdk);
+  const anyFilled = [qty,press,air,prdk].some(v=>v!==null);
+  const anyNok = Object.values(results).some(v=>v===true);
+  const box = document.getElementById('insp-overall');
+  box.innerHTML = !anyFilled ? '' : anyNok ? `<span class="badge nok">NOK — DI BAWAH STANDAR</span>` : `<span class="badge ok">OK — SESUAI STANDAR</span>`;
+  return {qty,press,air,prdk,results,anyNok,anyFilled};
+}
+function setFieldStatus(id, isNok){
+  const el = document.getElementById(id);
+  if(isNok===null){ el.textContent=''; el.className='field-status'; return; }
+  el.textContent = isNok? 'DI BAWAH STANDAR' : 'SESUAI STANDAR';
+  el.className = 'field-status ' + (isNok? 'nok':'ok');
+}
+
+function saveInspeksi(pheId){
+  const r = evalInspeksi(pheId);
+  if(!r.anyFilled){ toast('Isi minimal satu parameter.'); return; }
+  const tech = document.getElementById('insp-tech').value.trim();
+  if(!tech){ toast('Isi nama teknisi.'); return; }
+  STORE.inspections.unshift({
+    id: uid(), pheId, timestamp: Date.now(), technician: tech,
+    actualQty: r.qty, actualPress: r.press, actualAir: r.air, actualPrdk: r.prdk,
+    status: r.anyNok ? 'NOK' : 'OK',
+    notes: document.getElementById('insp-notes').value.trim(),
+  });
+  if(saveStore()){
+    state.lastTech = tech;
+    toast('Inspeksi tersimpan.');
+    render();
+  }
+}
+function renderInspHistory(pheId){
+  const box = document.getElementById('insp-history');
+  const rows = STORE.inspections.filter(v=>v.pheId===pheId).slice(0,15);
+  if(!rows.length){ box.innerHTML = '<p class="empty">Belum ada data inspeksi untuk PHE ini.</p>'; return; }
+  box.innerHTML = rows.map(v=>`<div class="entry st-${v.status==='OK'?'ok':'nok'}">
+    <div class="top-row">
+      <div><div class="who">${escapeHtml(v.technician||'-')}</div><div class="when">${fmtDate(v.timestamp)}</div></div>
+      <span class="badge ${v.status==='OK'?'ok':'nok'}">${v.status}</span>
+    </div>
+    <div class="detail">Qty ${v.actualQty??'-'} · Press ${v.actualPress??'-'}mm · Air ${v.actualAir??'-'}Bar · Produk ${v.actualPrdk??'-'}Bar</div>
+    ${v.notes? `<div class="detail" style="font-family:var(--sans);">${escapeHtml(v.notes)}</div>` : ''}
+  </div>`).join('');
+}
+
+/* ============ COP / CIP ============ */
+function renderActivity(main, type){
+  const key = type==='COP' ? 'pheCOP' : 'pheCIP';
+  const modeKey = type==='COP' ? 'copMode' : 'cipMode';
+  const pheId = state[key], mode = state[modeKey];
+  const title = type==='COP' ? 'COP (Cleaning Out Place)' : 'CIP Lokal (Cleaning In Place)';
+  main.innerHTML = `
+    <div class="panel accent-teal">
+      <h2>${title}</h2>
+      <p class="sub">Catat siklus hidup dari ${type} hingga PHE blocking, tekanan air/produk sebelum &amp; sesudah, dan dokumentasi foto (3 foto masing-masing).</p>
+      <label>Pilih PHE</label>
+      <select id="sel-phe-act">${PHE_LIST.map(p=>`<option value="${p.id}" ${p.id===pheId?'selected':''}>${p.name}</option>`).join('')}</select>
+      <div class="seg" style="margin-top:12px;">
+        <button data-mode="mulai" class="${mode==='mulai'?'active':''}">Mulai ${type}</button>
+        <button data-mode="selesai" class="${mode==='selesai'?'active':''}">Selesaikan (Blocking)</button>
+      </div>
+      <div id="act-form"></div>
+    </div>
+    <div class="panel">
+      <h2>Riwayat ${type} — ${pheName(pheId)}</h2>
+      <div id="act-history"></div>
+    </div>
+  `;
+  document.getElementById('sel-phe-act').addEventListener('change', e=>{ state[key] = e.target.value; render(); });
+  main.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click', ()=>{ state[modeKey] = b.dataset.mode; render(); }));
+  if(mode==='mulai') renderActivityStart(pheId, type); else renderActivityFinish(pheId, type);
+  renderActHistory(pheId, type);
+}
+
+function photoSlotHtml(){ return `<div class="photo-slot"><span class="plus">+</span><input type="file" accept="image/*"></div>`; }
+function attachSlotHandler(slot, idx, storeArr){
+  const input = slot.querySelector('input');
+  input.addEventListener('change', async e=>{
+    const file = e.target.files[0]; if(!file) return;
+    slot.innerHTML = `<span class="plus">⏳</span>`;
+    try{
+      storeArr[idx] = await resizeImage(file);
+      slot.innerHTML = `<img src="${storeArr[idx]}"><input type="file" accept="image/*">`;
+    }catch(err){ console.error(err); toast('Gagal memproses foto.'); slot.innerHTML = `<span class="plus">+</span><input type="file" accept="image/*">`; }
+    attachSlotHandler(slot, idx, storeArr);
+  });
+}
+function wirePhotoSlots(containerSel, storeArr){
+  document.querySelectorAll(containerSel+' .photo-slot').forEach((slot, idx)=>attachSlotHandler(slot, idx, storeArr));
+}
+
+function renderActivityStart(pheId, type){
+  const box = document.getElementById('act-form');
+  const photosBefore = [null,null,null];
+  box.innerHTML = `
+    <label>Tanggal mulai ${type}</label>
+    <input type="date" id="act-start" value="${todayStr()}">
+    <div class="row2">
+      <div><label>Tekanan Air sebelum (Bar)</label><input type="number" step="0.1" id="act-air-before"></div>
+      <div><label>Tekanan Produk sebelum (Bar)</label><input type="number" step="0.1" id="act-prdk-before"></div>
+    </div>
+    <label>Foto sebelum (before) — 3 foto</label>
+    <div class="photos" id="photos-before">${photoSlotHtml()}${photoSlotHtml()}${photoSlotHtml()}</div>
+    <label>Nama teknisi</label>
+    <input type="text" id="act-tech" placeholder="Nama teknisi" value="${escapeHtml(state.lastTech||'')}">
+    <label>Catatan (opsional)</label>
+    <textarea id="act-notes" placeholder="Catatan tambahan..."></textarea>
+    <button class="btn btn-primary" id="act-save" style="margin-top:14px;">Mulai ${type} &amp; simpan</button>
+  `;
+  wirePhotoSlots('#photos-before', photosBefore);
+  document.getElementById('act-save').addEventListener('click', ()=>{
+    const tech = document.getElementById('act-tech').value.trim();
+    if(!tech){ toast('Isi nama teknisi.'); return; }
+    const startDate = document.getElementById('act-start').value;
+    if(!startDate){ toast('Isi tanggal mulai.'); return; }
+    STORE.activities.unshift({
+      id: uid(), pheId, type, status:'open', startDate, endDate:null,
+      airBefore: num(document.getElementById('act-air-before').value),
+      prdkBefore: num(document.getElementById('act-prdk-before').value),
+      airAfter:null, prdkAfter:null,
+      photosBefore: photosBefore.filter(Boolean), photosAfter: [],
+      technician: tech, notes: document.getElementById('act-notes').value.trim(),
+      createdAt: Date.now(),
+    });
+    if(saveStore()){ state.lastTech = tech; toast(type+' dimulai & tersimpan.'); render(); }
+  });
+}
+
+function renderActivityFinish(pheId, type){
+  const box = document.getElementById('act-form');
+  const open = STORE.activities.filter(a=>a.pheId===pheId && a.type===type && a.status==='open');
+  if(!open.length){ box.innerHTML = `<p class="empty">Tidak ada siklus ${type} yang sedang berjalan untuk PHE ini.</p>`; return; }
+  box.innerHTML = `<label>Pilih siklus untuk diselesaikan</label>
+    <select id="pick-open">${open.map(a=>`<option value="${a.id}">Mulai ${fmtDateOnly(a.startDate)} — ${escapeHtml(a.technician||'-')}</option>`).join('')}</select>
+    <div id="finish-detail"></div>`;
+  document.getElementById('pick-open').addEventListener('change', ()=>renderFinishDetail(open));
+  renderFinishDetail(open);
+}
+
+function renderFinishDetail(open){
+  const sel = document.getElementById('pick-open');
+  const a = open.find(x=>x.id===sel.value);
+  const detail = document.getElementById('finish-detail');
+  const photosAfter = [null,null,null];
+  detail.innerHTML = `
+    <label>Tanggal blocking / selesai</label>
+    <input type="date" id="act-end" value="${todayStr()}" min="${a.startDate}">
+    <div class="row2">
+      <div><label>Tekanan Air sesudah (Bar)</label><input type="number" step="0.1" id="act-air-after"></div>
+      <div><label>Tekanan Produk sesudah (Bar)</label><input type="number" step="0.1" id="act-prdk-after"></div>
+    </div>
+    <label>Foto sesudah (after) — 3 foto</label>
+    <div class="photos" id="photos-after">${photoSlotHtml()}${photoSlotHtml()}${photoSlotHtml()}</div>
+    <label>Catatan penutup (opsional)</label>
+    <textarea id="act-notes-close" placeholder="Catatan tambahan..."></textarea>
+    <button class="btn btn-primary" id="act-close" style="margin-top:14px;">Selesaikan siklus</button>
+  `;
+  wirePhotoSlots('#photos-after', photosAfter);
+  document.getElementById('act-close').addEventListener('click', ()=>{
+    const endDate = document.getElementById('act-end').value;
+    if(!endDate){ toast('Isi tanggal blocking.'); return; }
+    const idx = STORE.activities.findIndex(x=>x.id===a.id);
+    const closeNote = document.getElementById('act-notes-close').value.trim();
+    STORE.activities[idx] = {
+      ...STORE.activities[idx],
+      status:'closed', endDate,
+      airAfter: num(document.getElementById('act-air-after').value),
+      prdkAfter: num(document.getElementById('act-prdk-after').value),
+      photosAfter: photosAfter.filter(Boolean),
+      notes: STORE.activities[idx].notes ? STORE.activities[idx].notes + (closeNote? ' | Penutup: '+closeNote : '') : closeNote,
+      lifetimeDays: Math.max(0, Math.round((new Date(endDate) - new Date(a.startDate)) / 86400000)),
+    };
+    if(saveStore()){ toast('Siklus diselesaikan.'); render(); }
+  });
+}
+
+function renderActHistory(pheId, type){
+  const box = document.getElementById('act-history');
+  const rows = STORE.activities.filter(v=>v.pheId===pheId && v.type===type).slice(0,15);
+  if(!rows.length){ box.innerHTML = `<p class="empty">Belum ada riwayat ${type} untuk PHE ini.</p>`; return; }
+  box.innerHTML = rows.map(v=>{
+    const thumbs = [...(v.photosBefore||[]), ...(v.photosAfter||[])].map(src=>`<img src="${src}">`).join('');
+    return `<div class="entry st-${v.status==='open'?'open':'ok'}">
+      <div class="top-row">
+        <div><div class="who">${escapeHtml(v.technician||'-')}</div><div class="when">Mulai ${fmtDateOnly(v.startDate)}${v.endDate? ' → Selesai '+fmtDateOnly(v.endDate) : ''}</div></div>
+        <span class="badge ${v.status==='open'?'open':'ok'}">${v.status==='open'?'BERJALAN':'SELESAI'}</span>
+      </div>
+      <div class="detail">
+        ${v.status==='closed' && v.lifetimeDays!=null ? 'Lifetime: '+v.lifetimeDays+' hari<br>' : ''}
+        Air ${v.airBefore??'-'}→${v.airAfter??'-'}Bar · Produk ${v.prdkBefore??'-'}→${v.prdkAfter??'-'}Bar
+      </div>
+      ${v.notes? `<div class="detail" style="font-family:var(--sans);">${escapeHtml(v.notes)}</div>` : ''}
+      ${thumbs? '<div class="thumbs">'+thumbs+'</div>' : ''}
+    </div>`;
+  }).join('');
+}
+
+/* ============ Riwayat gabungan ============ */
+function renderRiwayat(main){
+  main.innerHTML = `
+    <div class="panel accent-teal">
+      <h2>Riwayat gabungan</h2>
+      <p class="sub">Lihat dan unduh seluruh riwayat inspeksi, COP, dan CIP lokal yang tersimpan di perangkat ini.</p>
+      <div class="filter-row">
+        <select id="rw-phe"><option value="">Semua PHE</option>${PHE_LIST.map(p=>`<option value="${p.id}">${p.name}</option>`).join('')}</select>
+        <select id="rw-jenis">
+          <option value="all">Semua jenis</option>
+          <option value="inspeksi">Inspeksi</option>
+          <option value="COP">COP</option>
+          <option value="CIP">CIP Lokal</option>
+        </select>
+      </div>
+      <div class="search-row">
+        <input type="text" id="rw-search" placeholder="Cari nama teknisi...">
+      </div>
+      <div class="dash-toolbar">
+        <button class="btn btn-ghost" id="rw-export-csv">⬇ CSV</button>
+        <button class="btn btn-ghost" id="rw-export-xlsx">⬇ Excel (.xlsx)</button>
+      </div>
+      <div class="storage-meter"><i id="storage-bar" style="width:0%"></i></div>
+      <div class="storage-txt" id="storage-txt"></div>
+    </div>
+    <div class="panel"><h2>Data</h2><div id="rw-list"></div></div>
+  `;
+  document.getElementById('rw-phe').addEventListener('change', loadRiwayat);
+  document.getElementById('rw-jenis').addEventListener('change', loadRiwayat);
+  document.getElementById('rw-search').addEventListener('input', loadRiwayat);
+  document.getElementById('rw-export-csv').addEventListener('click', exportRiwayatCSV);
+  document.getElementById('rw-export-xlsx').addEventListener('click', exportRiwayatExcel);
+  loadRiwayat();
+  updateStorageMeter();
+}
+function updateStorageMeter(){
+  const bytes = new Blob([JSON.stringify(STORE)]).size;
+  const pct = Math.min(100, Math.round(bytes/(5*1024*1024)*100));
+  const bar = document.getElementById('storage-bar');
+  const txt = document.getElementById('storage-txt');
+  if(bar){ bar.style.width = pct+'%'; }
+  if(txt){ txt.textContent = `${(bytes/1024/1024).toFixed(2)} MB terpakai (perkiraan, dari ~5 MB kapasitas browser)`; }
+}
+function fetchAllRiwayat(){
+  const pheFilter = document.getElementById('rw-phe')?.value || '';
+  const jenis = document.getElementById('rw-jenis')?.value || 'all';
+  const search = (document.getElementById('rw-search')?.value || '').trim().toLowerCase();
+  const rows = [];
+  if(jenis==='all' || jenis==='inspeksi'){
+    STORE.inspections.filter(v=>!pheFilter || v.pheId===pheFilter).forEach(v=>{
+      rows.push({jenis:'Inspeksi', phe:pheName(v.pheId), tanggal:v.timestamp, teknisi:v.technician, status:v.status,
+        detail:`Qty ${v.actualQty??'-'} / Press ${v.actualPress??'-'}mm / Air ${v.actualAir??'-'}Bar / Produk ${v.actualPrdk??'-'}Bar`});
+    });
+  }
+  ['COP','CIP'].forEach(t=>{
+    if(jenis==='all' || jenis===t){
+      STORE.activities.filter(v=>v.type===t && (!pheFilter || v.pheId===pheFilter)).forEach(v=>{
+        rows.push({jenis:t==='COP'?'COP':'CIP Lokal', phe:pheName(v.pheId), tanggal:v.createdAt, teknisi:v.technician,
+          status:v.status==='open'?'Berjalan':'Selesai ('+(v.lifetimeDays??'-')+' hari)',
+          detail:`Mulai ${fmtDateOnly(v.startDate)}${v.endDate?' - Selesai '+fmtDateOnly(v.endDate):''}`});
+      });
+    }
+  });
+  rows.sort((a,b)=>(b.tanggal||0)-(a.tanggal||0));
+  return search ? rows.filter(r=>(r.teknisi||'').toLowerCase().includes(search)) : rows;
+}
+function loadRiwayat(){
+  const box = document.getElementById('rw-list');
+  const rows = fetchAllRiwayat();
+  if(!rows.length){ box.innerHTML = '<p class="empty">Tidak ada data.</p>'; return; }
+  box.innerHTML = rows.map(r=>`<div class="entry st-${/nok/i.test(r.status)?'nok': /berjalan/i.test(r.status)?'open':'ok'}">
+    <div class="top-row">
+      <div><div class="who">${escapeHtml(r.phe)} — ${r.jenis}</div><div class="when">${fmtDate(r.tanggal)} · ${escapeHtml(r.teknisi||'-')}</div></div>
+      <span class="badge ${/nok/i.test(r.status)?'nok': /berjalan/i.test(r.status)?'open':'ok'}">${r.status}</span>
+    </div>
+    <div class="detail">${escapeHtml(r.detail)}</div>
+  </div>`).join('');
+}
+function exportRiwayatCSV(){
+  const rows = fetchAllRiwayat();
+  const header = ['Jenis','PHE','Tanggal','Teknisi','Status','Detail'];
+  const csvRows = [header.join(',')].concat(rows.map(r=>[r.jenis,r.phe,fmtDate(r.tanggal),r.teknisi||'',r.status,(r.detail||'').replace(/,/g,';')]
+    .map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
+  const blob = new Blob([csvRows.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'riwayat_phe.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('CSV diunduh.');
+}
+
+function exportRiwayatExcel(){
+  if(typeof XLSX === 'undefined'){ toast('Modul Excel gagal dimuat — periksa koneksi internet lalu coba lagi.'); return; }
+  const rows = fetchAllRiwayat();
+  if(!rows.length){ toast('Tidak ada data untuk diekspor.'); return; }
+  const sheetData = rows.map(r=>({
+    Jenis:r.jenis, PHE:r.phe, Tanggal:fmtDate(r.tanggal), Teknisi:r.teknisi||'', Status:r.status, Detail:r.detail||''
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetData), 'Riwayat');
+  XLSX.utils.book_append_sheet(wb, buildSummarySheet(), 'Ringkasan');
+  XLSX.writeFile(wb, 'riwayat_phe_'+todayStr()+'.xlsx');
+  toast('Excel diunduh.');
+}
+
+function buildSummarySheet(){
+  const s = computeDashboardStats();
+  const aoa = [
+    ['Ringkasan PHE Maintenance Tracker', ''],
+    ['Dibuat', fmtDate(Date.now())],
+    [],
+    ['Total Inspeksi', s.totalInspeksi],
+    ['Inspeksi OK', s.okCount],
+    ['Inspeksi NOK', s.nokCount],
+    ['Siklus COP dibuka', s.copOpen],
+    ['Siklus COP selesai', s.copClosed],
+    ['Rata-rata lifetime COP (hari)', s.copAvgLife ?? '-'],
+    ['Siklus CIP dibuka', s.cipOpen],
+    ['Siklus CIP selesai', s.cipClosed],
+    ['Rata-rata lifetime CIP (hari)', s.cipAvgLife ?? '-'],
+    [],
+    ['PHE', 'Jumlah NOK', 'Rata-rata lifetime COP (hari)', 'Rata-rata lifetime CIP (hari)'],
+  ];
+  PHE_LIST.forEach(p=>{
+    aoa.push([p.name, s.perPheNok[p.id]||0, s.perPheLifeCOP[p.id] ?? '-', s.perPheLifeCIP[p.id] ?? '-']);
+  });
+  return XLSX.utils.aoa_to_sheet(aoa);
+}
+
+/* ============ Standar ============ */
+function renderStandar(main){
+  main.innerHTML = `
+    <div class="backlink" id="std-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 18l-6-6 6-6"/></svg> Kembali ke Beranda</div>
+    <div class="panel accent-teal">
+      <h2>Standar per PHE</h2>
+      <div class="note">Nilai Heating 2 dan Heating 4 belum terbaca jelas dari lembar acuan dan disalin sementara dari unit sejenis. Periksa dan perbarui sebelum dipakai untuk penentuan OK/NOK.</div>
+      <div class="settings-row head"><div>PHE</div><div>Qty</div><div>Min mm</div><div>Max mm</div><div>Air / Produk</div><div></div></div>
+      <div id="std-rows"></div>
+    </div>
+    <div class="panel">
+      <h2>Cadangan data</h2>
+      <p class="sub">Data tersimpan hanya di browser perangkat ini (localStorage). Ekspor berkala ke CSV di tab Riwayat, atau unggah manual ke Google Drive Anda sebagai cadangan.</p>
+      <button class="btn btn-ghost" id="std-reset">Hapus semua data di perangkat ini</button>
+    </div>
+  `;
+  document.getElementById('std-back').addEventListener('click', ()=>goTab('beranda'));
+  const rowsBox = document.getElementById('std-rows');
+  rowsBox.innerHTML = PHE_LIST.map(p=>{
+    const s = STORE.standards[p.id];
+    return `<div class="settings-row" data-id="${p.id}">
+      <div>${p.name}${s.verified? '' : ' ⚠'}</div>
+      <input type="number" class="f-qty" value="${s.qtyPlate}">
+      <input type="number" class="f-min" value="${s.minPress}">
+      <input type="number" class="f-max" value="${s.maxPress}">
+      <div style="display:flex; gap:3px;">
+        <input type="number" step="0.1" class="f-air" value="${s.airMin}" title="Air min">
+        <input type="number" step="0.1" class="f-prdkmin" value="${s.prdkMin}" title="Produk min">
+        <input type="number" step="0.1" class="f-prdkmax" value="${s.prdkMax}" title="Produk max">
+      </div>
+      <button class="btn btn-ghost btn-sm f-save">Simpan</button>
+    </div>`;
+  }).join('');
+  rowsBox.querySelectorAll('.f-save').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const row = btn.closest('.settings-row'); const id = row.dataset.id;
+      STORE.standards[id] = {
+        qtyPlate: num(row.querySelector('.f-qty').value),
+        minPress: num(row.querySelector('.f-min').value),
+        maxPress: num(row.querySelector('.f-max').value),
+        airMin: num(row.querySelector('.f-air').value),
+        prdkMin: num(row.querySelector('.f-prdkmin').value),
+        prdkMax: num(row.querySelector('.f-prdkmax').value),
+        verified: true,
+      };
+      if(saveStore()) toast('Standar '+pheName(id)+' disimpan.');
+    });
+  });
+  document.getElementById('std-reset').addEventListener('click', ()=>{
+    if(confirm('Hapus semua data inspeksi, COP, dan CIP di perangkat ini? Tindakan ini tidak bisa dibatalkan.')){
+      STORE = {standards:{...DEFAULT_STANDARDS}, inspections:[], activities:[]};
+      saveStore(); toast('Data direset.'); render();
+    }
+  });
+}
+
+/* ============ Dashboard ============ */
+function computeDashboardStats(){
+  const inspections = STORE.inspections;
+  const okCount = inspections.filter(v=>v.status==='OK').length;
+  const nokCount = inspections.filter(v=>v.status==='NOK').length;
+  const perPheNok = {};
+  PHE_LIST.forEach(p=>perPheNok[p.id]=0);
+  inspections.forEach(v=>{ if(v.status==='NOK') perPheNok[v.pheId] = (perPheNok[v.pheId]||0)+1; });
+
+  function activityStats(type){
+    const rows = STORE.activities.filter(a=>a.type===type);
+    const open = rows.filter(a=>a.status==='open').length;
+    const closed = rows.filter(a=>a.status==='closed');
+    const lifetimes = closed.map(a=>a.lifetimeDays).filter(v=>v!=null);
+    const avg = lifetimes.length ? Math.round(lifetimes.reduce((a,b)=>a+b,0)/lifetimes.length) : null;
+    const perPhe = {};
+    PHE_LIST.forEach(p=>{
+      const list = closed.filter(a=>a.pheId===p.id).map(a=>a.lifetimeDays).filter(v=>v!=null);
+      perPhe[p.id] = list.length ? Math.round(list.reduce((a,b)=>a+b,0)/list.length) : null;
+    });
+    return {open, closed:closed.length, avg, perPhe};
+  }
+  const cop = activityStats('COP');
+  const cip = activityStats('CIP');
+
+  // monthly trend, last 6 months
+  const months = [];
+  const now = new Date();
+  for(let i=5;i>=0;i--){ const d = new Date(now.getFullYear(), now.getMonth()-i, 1); months.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), label:d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'})}); }
+  const monthCounts = months.map(m=>{
+    const insp = inspections.filter(v=>keyOf(v.timestamp)===m.key).length;
+    const act = STORE.activities.filter(v=>keyOf(v.createdAt)===m.key).length;
+    return {label:m.label, insp, act};
+  });
+  function keyOf(ts){ if(!ts) return ''; const d = new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+
+  return {
+    totalInspeksi: inspections.length, okCount, nokCount, perPheNok,
+    copOpen: cop.open, copClosed: cop.closed, copAvgLife: cop.avg, perPheLifeCOP: cop.perPhe,
+    cipOpen: cip.open, cipClosed: cip.closed, cipAvgLife: cip.avg, perPheLifeCIP: cip.perPhe,
+    monthCounts,
+  };
+}
+
+function renderDashboard(main){
+  if(!state.dashboardUnlocked){
+    main.innerHTML = `
+      <div class="panel accent-teal lockpanel">
+        <div class="lockicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+        <h2 style="margin-bottom:4px;">Dashboard terkunci</h2>
+        <p class="sub" style="margin-bottom:14px;">Masukkan kata sandi akses untuk melihat ringkasan &amp; grafik keseluruhan data.</p>
+        <input type="password" id="dash-pw" placeholder="Kata sandi" autocomplete="off">
+        <div class="lockerr" id="dash-err"></div>
+        <button class="btn btn-primary" id="dash-unlock">Buka Dashboard</button>
+      </div>
+    `;
+    const pwInput = document.getElementById('dash-pw');
+    const tryUnlock = ()=>{
+      if(pwInput.value.trim().toUpperCase() === DASHBOARD_PASSWORD){
+        state.dashboardUnlocked = true; render();
+      } else {
+        document.getElementById('dash-err').textContent = 'Kata sandi salah.';
+        pwInput.value=''; pwInput.focus();
+      }
+    };
+    document.getElementById('dash-unlock').addEventListener('click', tryUnlock);
+    pwInput.addEventListener('keydown', e=>{ if(e.key==='Enter') tryUnlock(); });
+    pwInput.focus();
+    return;
+  }
+
+  const s = computeDashboardStats();
+  main.innerHTML = `
+    <div class="panel accent-teal">
+      <h2>Ringkasan keseluruhan</h2>
+      <p class="sub">Rangkuman seluruh PHE dari data yang tersimpan di perangkat ini.</p>
+      <div class="stat-grid">
+        <div class="stat-card" data-goto="riwayat-inspeksi"><span class="k">Total Inspeksi</span><span class="v">${s.totalInspeksi}</span></div>
+        <div class="stat-card" data-goto="riwayat-inspeksi"><span class="k">OK / NOK</span><span class="v">${s.okCount} <small>/ ${s.nokCount}</small></span></div>
+        <div class="stat-card" data-goto="riwayat-COP"><span class="k">COP Berjalan / Selesai</span><span class="v">${s.copOpen} <small>/ ${s.copClosed}</small></span></div>
+        <div class="stat-card" data-goto="riwayat-CIP"><span class="k">CIP Berjalan / Selesai</span><span class="v">${s.cipOpen} <small>/ ${s.cipClosed}</small></span></div>
+        <div class="stat-card" data-goto="riwayat-COP"><span class="k">Rata² lifetime COP</span><span class="v">${s.copAvgLife ?? '-'} <small>hari</small></span></div>
+        <div class="stat-card" data-goto="riwayat-CIP"><span class="k">Rata² lifetime CIP</span><span class="v">${s.cipAvgLife ?? '-'} <small>hari</small></span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Proporsi hasil inspeksi</h2>
+      <div class="chart-box"><canvas id="chart-okok"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h2>Jumlah NOK per PHE</h2>
+      <p class="sub">Menandai PHE yang paling sering di bawah standar.</p>
+      <div class="chart-box tall"><canvas id="chart-nok"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h2>Rata-rata lifetime per PHE (hari)</h2>
+      <p class="sub">Dari siklus COP &amp; CIP yang sudah diselesaikan.</p>
+      <div class="chart-box tall"><canvas id="chart-life"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h2>Aktivitas 6 bulan terakhir</h2>
+      <div class="chart-box"><canvas id="chart-trend"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h2>Laporan</h2>
+      <div class="dash-toolbar">
+        <button class="btn btn-ghost" id="dash-export-xlsx">⬇ Unduh laporan Excel</button>
+        <button class="btn btn-ghost" id="dash-lock">🔒 Kunci</button>
+      </div>
+    </div>
+  `;
+
+  main.querySelectorAll('.stat-card').forEach(card=>{
+    card.addEventListener('click', ()=>{
+      const goto = card.dataset.goto;
+      const [tab, jenis] = goto.split('-');
+      goTab(tab);
+      setTimeout(()=>{ const sel = document.getElementById('rw-jenis'); if(sel){ sel.value = jenis; loadRiwayat(); } }, 0);
+    });
+  });
+  document.getElementById('dash-export-xlsx').addEventListener('click', exportRiwayatExcel);
+  document.getElementById('dash-lock').addEventListener('click', ()=>{ state.dashboardUnlocked = false; render(); });
+
+  if(typeof Chart === 'undefined'){
+    ['chart-okok','chart-nok','chart-life','chart-trend'].forEach(id=>{
+      const c = document.getElementById(id);
+      if(c) c.replaceWith(Object.assign(document.createElement('p'), {className:'empty', textContent:'Grafik gagal dimuat — periksa koneksi internet lalu muat ulang halaman.'}));
+    });
+    return;
+  }
+  renderCharts(s);
+}
+
+function destroyCharts(){ Object.values(chartInstances).forEach(c=>{ try{c.destroy();}catch(e){} }); chartInstances = {}; }
+
+function renderCharts(s){
+  destroyCharts();
+  Chart.defaults.font.family = "'Inter', sans-serif";
+  Chart.defaults.color = '#5A6D68';
+  const teal = '#0E6E63', nokColor = '#B3261E', amber = '#B36B00', steel = '#2C4A52', grid='#D8E1DE';
+
+  chartInstances.okok = new Chart(document.getElementById('chart-okok'), {
+    type:'doughnut',
+    data:{ labels:['OK','NOK'], datasets:[{ data:[s.okCount, s.nokCount], backgroundColor:[teal, nokColor], borderWidth:0 }] },
+    options:{ maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }
+  });
+
+  chartInstances.nok = new Chart(document.getElementById('chart-nok'), {
+    type:'bar',
+    data:{ labels:PHE_LIST.map(p=>p.name.replace('PHE ','')), datasets:[{ label:'Jumlah NOK', data:PHE_LIST.map(p=>s.perPheNok[p.id]||0), backgroundColor:nokColor, borderRadius:3 }] },
+    options:{ maintainAspectRatio:false, indexAxis:'y', plugins:{legend:{display:false}}, scales:{ x:{ beginAtZero:true, ticks:{precision:0}, grid:{color:grid} }, y:{ grid:{display:false} } } }
+  });
+
+  chartInstances.life = new Chart(document.getElementById('chart-life'), {
+    type:'bar',
+    data:{ labels:PHE_LIST.map(p=>p.name.replace('PHE ','')), datasets:[
+      { label:'COP', data:PHE_LIST.map(p=>s.perPheLifeCOP[p.id]), backgroundColor:teal, borderRadius:3 },
+      { label:'CIP', data:PHE_LIST.map(p=>s.perPheLifeCIP[p.id]), backgroundColor:amber, borderRadius:3 },
+    ]},
+    options:{ maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{ x:{ grid:{display:false}, ticks:{maxRotation:60, minRotation:60, font:{size:10}} }, y:{ beginAtZero:true, grid:{color:grid} } } }
+  });
+
+  chartInstances.trend = new Chart(document.getElementById('chart-trend'), {
+    type:'line',
+    data:{ labels:s.monthCounts.map(m=>m.label), datasets:[
+      { label:'Inspeksi', data:s.monthCounts.map(m=>m.insp), borderColor:steel, backgroundColor:steel, tension:.3 },
+      { label:'COP/CIP', data:s.monthCounts.map(m=>m.act), borderColor:teal, backgroundColor:teal, tension:.3 },
+    ]},
+    options:{ maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{ x:{ grid:{display:false} }, y:{ beginAtZero:true, ticks:{precision:0}, grid:{color:grid} } } }
+  });
+}
+
+/* ============ boot ============ */
+document.querySelectorAll('nav.bottomnav button').forEach(btn=>{
+  btn.addEventListener('click', ()=>goTab(btn.dataset.tab));
+});
+document.getElementById('hero-gear').addEventListener('click', ()=>goTab('standar'));
+render();
+// Ambil database pusat setelah UI pertama kali tampil.
+syncFromDrive();
+</script>
+</body>
+</html>
