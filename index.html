@@ -348,16 +348,16 @@ const PHE_LIST = [
 ];
 
 const DEFAULT_STANDARDS = {
-  heating1:    {qtyPlate:81,  minPress:314, maxPress:333, airMin:3,   prdkMin:6,   prdkMax:6,   verified:true},
-  heating2:    {qtyPlate:81,  minPress:314, maxPress:333, airMin:3,   prdkMin:6,   prdkMax:6,   verified:false},
-  heating3:    {qtyPlate:79,  minPress:305, maxPress:324, airMin:3,   prdkMin:6,   prdkMax:6,   verified:true},
-  heating4:    {qtyPlate:82,  minPress:318, maxPress:337, airMin:3,   prdkMin:6,   prdkMax:6,   verified:false},
-  preheating1: {qtyPlate:40,  minPress:155, maxPress:165, airMin:3,   prdkMin:4,   prdkMax:5,   verified:true},
-  preheating2: {qtyPlate:40,  minPress:155, maxPress:165, airMin:3,   prdkMin:4,   prdkMax:5,   verified:true},
-  precooling1: {qtyPlate:41,  minPress:159, maxPress:168, airMin:1.5, prdkMin:1.5, prdkMax:2,   verified:true},
-  precooling2: {qtyPlate:41,  minPress:159, maxPress:168, airMin:1.5, prdkMin:1.5, prdkMax:2,   verified:true},
-  cooling1:    {qtyPlate:115, minPress:452, maxPress:473, airMin:1.5, prdkMin:6,   prdkMax:6,   verified:true},
-  cooling2:    {qtyPlate:115, minPress:452, maxPress:473, airMin:1.5, prdkMin:6,   prdkMax:6,   verified:true},
+  heating1:    {qtyPlate:81,  pressMin:314, pressMax:333, airMin:3,   prdkMin:6,   prdkMax:6,   verified:true},
+  heating2:    {qtyPlate:81,  pressMin:314, pressMax:333, airMin:3,   prdkMin:6,   prdkMax:6,   verified:false},
+  heating3:    {qtyPlate:79,  pressMin:305, pressMax:324, airMin:3,   prdkMin:6,   prdkMax:6,   verified:true},
+  heating4:    {qtyPlate:82,  pressMin:318, pressMax:337, airMin:3,   prdkMin:6,   prdkMax:6,   verified:false},
+  preheating1: {qtyPlate:40,  pressMin:155, pressMax:165, airMin:3,   prdkMin:4,   prdkMax:5,   verified:true},
+  preheating2: {qtyPlate:40,  pressMin:155, pressMax:165, airMin:3,   prdkMin:4,   prdkMax:5,   verified:true},
+  precooling1: {qtyPlate:41,  pressMin:159, pressMax:168, airMin:1.5, prdkMin:1.5, prdkMax:2,   verified:true},
+  precooling2: {qtyPlate:41,  pressMin:159, pressMax:168, airMin:1.5, prdkMin:1.5, prdkMax:2,   verified:true},
+  cooling1:    {qtyPlate:115, pressMin:452, pressMax:473, airMin:1.5, prdkMin:6,   prdkMax:6,   verified:true},
+  cooling2:    {qtyPlate:115, pressMin:452, pressMax:473, airMin:1.5, prdkMin:6,   prdkMax:6,   verified:true},
 };
 
 /* ============ storage: local cache + Google Drive backend ============ */
@@ -436,6 +436,17 @@ async function syncFromDrive(){
     if(r && r.ok && r.data){
       STORE = {...EMPTY_STORE(), ...r.data};
       STORE.standards = {...DEFAULT_STANDARDS, ...(r.data.standards||{})};
+      PHE_LIST.forEach(p=>{
+        const s = STORE.standards[p.id] || {};
+        if(s.pressMin == null && s.minPress != null) s.pressMin = s.minPress;
+        if(s.pressMax == null && s.maxPress != null) s.pressMax = s.maxPress;
+        STORE.standards[p.id] = {...DEFAULT_STANDARDS[p.id], ...s};
+      });
+      STORE.inspections = (Array.isArray(r.data.inspections)?r.data.inspections:[]).map(v=>{
+        if(v.actualPressMin == null && v.actualPress != null) v.actualPressMin = v.actualPress;
+        if(v.actualPressMax == null && v.actualPress != null) v.actualPressMax = v.actualPress;
+        return v;
+      });
       STORE.inspections = Array.isArray(r.data.inspections)?r.data.inspections:[];
       STORE.activities = Array.isArray(r.data.activities)?r.data.activities:[];
       saveLocalStore();
@@ -448,7 +459,25 @@ async function syncFromDrive(){
   }
 }
 let STORE = loadStore();
-PHE_LIST.forEach(p=>{ if(!STORE.standards[p.id]) STORE.standards[p.id] = {...DEFAULT_STANDARDS[p.id]}; });
+
+// Migrasi data lama: minPress/maxPress -> pressMin/pressMax.
+PHE_LIST.forEach(p=>{
+  if(!STORE.standards[p.id]) {
+    STORE.standards[p.id] = {...DEFAULT_STANDARDS[p.id]};
+  } else {
+    const s = STORE.standards[p.id];
+    if(s.pressMin == null && s.minPress != null) s.pressMin = s.minPress;
+    if(s.pressMax == null && s.maxPress != null) s.pressMax = s.maxPress;
+    if(s.pressMin == null) s.pressMin = DEFAULT_STANDARDS[p.id].pressMin;
+    if(s.pressMax == null) s.pressMax = DEFAULT_STANDARDS[p.id].pressMax;
+  }
+});
+// Migrasi riwayat lama yang hanya memiliki satu actualPress.
+STORE.inspections = (STORE.inspections || []).map(v=>{
+  if(v.actualPressMin == null && v.actualPress != null) v.actualPressMin = v.actualPress;
+  if(v.actualPressMax == null && v.actualPress != null) v.actualPressMax = v.actualPress;
+  return v;
+});
 
 let state = {
   tab:'beranda',
@@ -630,7 +659,7 @@ function renderInspeksi(main){
         ${std.verified? '' : '<div class="flag">⚠ BELUM DIVERIFIKASI — periksa tab Standar</div>'}
         <div class="gauge-grid">
           <div class="gauge"><span class="k">Qty</span><span class="v">${std.qtyPlate}</span></div>
-          <div class="gauge"><span class="k">Range mm</span><span class="v">${std.minPress}–${std.maxPress}</span></div>
+          <div class="gauge"><span class="k">Range mm</span><span class="v">${std.pressMin}–${std.pressMax}</span></div>
           <div class="gauge"><span class="k">Air</span><span class="v">≥${std.airMin}</span></div>
           <div class="gauge"><span class="k">Produk</span><span class="v">${std.prdkMin===std.prdkMax? '≥'+std.prdkMin : std.prdkMin+'–'+std.prdkMax}</span></div>
         </div>
@@ -643,9 +672,13 @@ function renderInspeksi(main){
       <input type="number" id="insp-qty" placeholder="${std.qtyPlate}">
       <div class="field-status" id="stat-qty"></div>
 
-      <label>Panjang terpasang (mm)</label>
-      <input type="number" id="insp-press" placeholder="${std.minPress}–${std.maxPress}">
-      <div class="field-status" id="stat-press"></div>
+      <label>Panjang terpasang — Min Press (mm)</label>
+      <input type="number" step="0.1" id="insp-press-min" placeholder="Standar min ${std.pressMin}">
+      <div class="field-status" id="stat-press-min"></div>
+
+      <label>Panjang terpasang — Max Press (mm)</label>
+      <input type="number" step="0.1" id="insp-press-max" placeholder="Standar max ${std.pressMax}">
+      <div class="field-status" id="stat-press-max"></div>
 
       <div class="row2">
         <div>
@@ -677,7 +710,7 @@ function renderInspeksi(main){
   `;
 
   document.getElementById('sel-phe-insp').addEventListener('change', e=>{ state.pheInspeksi = e.target.value; render(); });
-  ['insp-qty','insp-press','insp-air','insp-prdk'].forEach(id=>document.getElementById(id).addEventListener('input', ()=>evalInspeksi(pheId)));
+  ['insp-qty','insp-press-min','insp-press-max','insp-air','insp-prdk'].forEach(id=>document.getElementById(id).addEventListener('input', ()=>evalInspeksi(pheId)));
   evalInspeksi(pheId);
   document.getElementById('insp-save').addEventListener('click', ()=>saveInspeksi(pheId));
   renderInspHistory(pheId);
@@ -686,24 +719,27 @@ function renderInspeksi(main){
 function evalInspeksi(pheId){
   const std = STORE.standards[pheId];
   const qty = num(document.getElementById('insp-qty').value);
-  const press = num(document.getElementById('insp-press').value);
+  const pressMin = num(document.getElementById('insp-press-min').value);
+  const pressMax = num(document.getElementById('insp-press-max').value);
   const air = num(document.getElementById('insp-air').value);
   const prdk = num(document.getElementById('insp-prdk').value);
   const results = {
     qty: qty===null? null : qty < std.qtyPlate,
-    press: press===null? null : (press < std.minPress || press > std.maxPress),
+    pressMin: pressMin===null? null : pressMin < std.pressMin,
+    pressMax: pressMax===null? null : pressMax > std.pressMax,
     air: air===null? null : air < std.airMin,
     prdk: prdk===null? null : prdk < std.prdkMin,
   };
   setFieldStatus('stat-qty', results.qty);
-  setFieldStatus('stat-press', results.press);
+  setFieldStatus('stat-press-min', results.pressMin);
+  setFieldStatus('stat-press-max', results.pressMax);
   setFieldStatus('stat-air', results.air);
   setFieldStatus('stat-prdk', results.prdk);
-  const anyFilled = [qty,press,air,prdk].some(v=>v!==null);
+  const anyFilled = [qty,pressMin,pressMax,air,prdk].some(v=>v!==null);
   const anyNok = Object.values(results).some(v=>v===true);
   const box = document.getElementById('insp-overall');
   box.innerHTML = !anyFilled ? '' : anyNok ? `<span class="badge nok">NOK — DI BAWAH STANDAR</span>` : `<span class="badge ok">OK — SESUAI STANDAR</span>`;
-  return {qty,press,air,prdk,results,anyNok,anyFilled};
+  return {qty,pressMin,pressMax,air,prdk,results,anyNok,anyFilled};
 }
 function setFieldStatus(id, isNok){
   const el = document.getElementById(id);
@@ -719,7 +755,7 @@ function saveInspeksi(pheId){
   if(!tech){ toast('Isi nama teknisi.'); return; }
   STORE.inspections.unshift({
     id: uid(), pheId, timestamp: Date.now(), technician: tech,
-    actualQty: r.qty, actualPress: r.press, actualAir: r.air, actualPrdk: r.prdk,
+    actualQty: r.qty, actualPressMin: r.pressMin, actualPressMax: r.pressMax, actualAir: r.air, actualPrdk: r.prdk,
     status: r.anyNok ? 'NOK' : 'OK',
     notes: document.getElementById('insp-notes').value.trim(),
   });
@@ -738,7 +774,7 @@ function renderInspHistory(pheId){
       <div><div class="who">${escapeHtml(v.technician||'-')}</div><div class="when">${fmtDate(v.timestamp)}</div></div>
       <span class="badge ${v.status==='OK'?'ok':'nok'}">${v.status}</span>
     </div>
-    <div class="detail">Qty ${v.actualQty??'-'} · Press ${v.actualPress??'-'}mm · Air ${v.actualAir??'-'}Bar · Produk ${v.actualPrdk??'-'}Bar</div>
+    <div class="detail">Qty ${v.actualQty??'-'} · Min Press ${v.actualPressMin??'-'}mm · Max Press ${v.actualPressMax??'-'}mm · Air ${v.actualAir??'-'}Bar · Produk ${v.actualPrdk??'-'}Bar</div>
     ${v.notes? `<div class="detail" style="font-family:var(--sans);">${escapeHtml(v.notes)}</div>` : ''}
   </div>`).join('');
 }
@@ -1030,7 +1066,7 @@ function renderStandar(main){
     <div class="panel accent-teal">
       <h2>Standar per PHE</h2>
       <div class="note">Nilai Heating 2 dan Heating 4 belum terbaca jelas dari lembar acuan dan disalin sementara dari unit sejenis. Periksa dan perbarui sebelum dipakai untuk penentuan OK/NOK.</div>
-      <div class="settings-row head"><div>PHE</div><div>Qty</div><div>Min mm</div><div>Max mm</div><div>Air / Produk</div><div></div></div>
+      <div class="settings-row head"><div>PHE</div><div>Qty</div><div>Min Press mm</div><div>Max Press mm</div><div>Air / Produk</div><div></div></div>
       <div id="std-rows"></div>
     </div>
     <div class="panel">
@@ -1046,8 +1082,8 @@ function renderStandar(main){
     return `<div class="settings-row" data-id="${p.id}">
       <div>${p.name}${s.verified? '' : ' ⚠'}</div>
       <input type="number" class="f-qty" value="${s.qtyPlate}">
-      <input type="number" class="f-min" value="${s.minPress}">
-      <input type="number" class="f-max" value="${s.maxPress}">
+      <input type="number" class="f-min" value="${s.pressMin}">
+      <input type="number" class="f-max" value="${s.pressMax}">
       <div style="display:flex; gap:3px;">
         <input type="number" step="0.1" class="f-air" value="${s.airMin}" title="Air min">
         <input type="number" step="0.1" class="f-prdkmin" value="${s.prdkMin}" title="Produk min">
@@ -1061,8 +1097,8 @@ function renderStandar(main){
       const row = btn.closest('.settings-row'); const id = row.dataset.id;
       STORE.standards[id] = {
         qtyPlate: num(row.querySelector('.f-qty').value),
-        minPress: num(row.querySelector('.f-min').value),
-        maxPress: num(row.querySelector('.f-max').value),
+        pressMin: num(row.querySelector('.f-min').value),
+        pressMax: num(row.querySelector('.f-max').value),
         airMin: num(row.querySelector('.f-air').value),
         prdkMin: num(row.querySelector('.f-prdkmin').value),
         prdkMax: num(row.querySelector('.f-prdkmax').value),
