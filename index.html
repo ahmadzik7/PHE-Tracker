@@ -157,6 +157,23 @@ textarea{resize:vertical; min-height:64px; font-family:var(--sans);}
 .photo-slot .plus{font-size:24px; color:var(--primary); font-weight:300;}
 .photo-slot input{position:absolute; inset:0; opacity:0; cursor:pointer;}
 
+/* ---- realtime camera ---- */
+.camera-modal{position:fixed;inset:0;z-index:100;background:rgba(7,13,24,.94);display:none;align-items:center;justify-content:center;padding:16px;}
+.camera-modal.show{display:flex;}
+.camera-card{width:min(560px,100%);background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.35);}
+.camera-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);}
+.camera-head strong{font-size:14px;}
+.camera-close{border:none;background:var(--bg-b);width:36px;height:36px;border-radius:11px;font-size:20px;cursor:pointer;color:var(--ink);}
+.camera-view{background:#05080d;aspect-ratio:4/3;position:relative;display:flex;align-items:center;justify-content:center;}
+.camera-view video{width:100%;height:100%;object-fit:cover;display:block;}
+.camera-guide{position:absolute;inset:12% 10%;border:2px solid rgba(255,255,255,.65);border-radius:16px;pointer-events:none;}
+.camera-status{padding:9px 16px 0;color:var(--ink-soft);font-size:11px;text-align:center;min-height:26px;}
+.camera-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:12px 16px 16px;}
+.camera-actions .btn{width:100%;}
+.photo-slot{cursor:pointer;}
+.photo-slot .photo-label{position:absolute;left:7px;bottom:7px;background:rgba(16,27,45,.76);color:#fff;padding:4px 7px;border-radius:7px;font-size:9px;font-weight:700;z-index:2;}
+.photo-slot .camera-retake{position:absolute;right:7px;top:7px;background:rgba(16,27,45,.76);color:#fff;border-radius:8px;padding:4px 6px;font-size:10px;z-index:2;}
+.photo-help{background:var(--teal-bg);color:#08786c;border:1px solid #BDEBE3;border-radius:12px;padding:10px 12px;font-size:11.5px;line-height:1.45;margin-top:8px;}
 .entry{border-radius:16px; padding:13px 14px; margin-bottom:10px; background:var(--panel); box-shadow:var(--shadow-sm); border-left:4px solid var(--line);}
 .entry.st-ok{border-left-color:var(--ok);}
 .entry.st-nok{border-left-color:var(--nok);}
@@ -297,6 +314,23 @@ nav.bottomnav button.active svg{color:var(--primary);}
 </header>
 
 <main id="main"></main>
+<div class="camera-modal" id="camera-modal" aria-hidden="true">
+  <div class="camera-card">
+    <div class="camera-head">
+      <strong id="camera-title">Ambil foto realtime</strong>
+      <button class="camera-close" id="camera-close" type="button" aria-label="Tutup">×</button>
+    </div>
+    <div class="camera-view">
+      <video id="camera-video" autoplay playsinline muted></video>
+      <div class="camera-guide"></div>
+    </div>
+    <div class="camera-status" id="camera-status">Kamera sedang disiapkan…</div>
+    <div class="camera-actions">
+      <button class="btn btn-ghost" id="camera-cancel" type="button">Batal</button>
+      <button class="btn btn-primary" id="camera-capture" type="button" disabled>📷 Ambil Foto</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <nav class="bottomnav">
@@ -409,6 +443,14 @@ async function preparePhotosForRemote(){
       }
     }
   }
+  for(const v of STORE.inspections){
+    const arr = Array.isArray(v.photos) ? v.photos : [];
+    for(let i=0;i<arr.length;i++){
+      if(typeof arr[i]==='string' && arr[i].startsWith('data:image/')){
+        arr[i] = await uploadPhotoToDrive(arr[i], v.id+'_inspection_'+i);
+      }
+    }
+  }
 }
 async function pushStoreToDrive(){
   if(remoteSyncBusy){ remoteSyncQueued=true; return; }
@@ -447,7 +489,6 @@ async function syncFromDrive(){
         if(v.actualPressMax == null && v.actualPress != null) v.actualPressMax = v.actualPress;
         return v;
       });
-      STORE.inspections = Array.isArray(r.data.inspections)?r.data.inspections:[];
       STORE.activities = Array.isArray(r.data.activities)?r.data.activities:[];
       saveLocalStore();
       render();
@@ -648,6 +689,8 @@ function renderCleaningTab(main){
 function renderInspeksi(main){
   const pheId = state.pheInspeksi;
   const std = STORE.standards[pheId];
+  const photos = state.inspectionPhotos || [null,null,null,null,null,null];
+  state.inspectionPhotos = photos;
   main.innerHTML = `
     <div class="panel accent-teal">
       <h2>Inspeksi PHE</h2>
@@ -693,6 +736,13 @@ function renderInspeksi(main){
         </div>
       </div>
 
+      <label>Dokumentasi foto inspeksi — wajib 6 foto realtime</label>
+      <div class="photo-help">📷 Semua foto diambil langsung dari kamera perangkat. Tidak tersedia pilihan dari galeri/file.</div>
+      <div class="photos" id="insp-photos">
+        ${photos.map((src,i)=>photoSlotHtml('Foto '+(i+1), src)).join('')}
+      </div>
+      <div id="insp-photo-status" class="field-status" style="margin-top:8px;"></div>
+
       <label>Nama teknisi</label>
       <input type="text" id="insp-tech" placeholder="Nama teknisi" value="${escapeHtml(state.lastTech||'')}">
 
@@ -709,11 +759,26 @@ function renderInspeksi(main){
     </div>
   `;
 
-  document.getElementById('sel-phe-insp').addEventListener('change', e=>{ state.pheInspeksi = e.target.value; render(); });
+  document.getElementById('sel-phe-insp').addEventListener('change', e=>{
+    state.pheInspeksi = e.target.value;
+    state.inspectionPhotos = [null,null,null,null,null,null];
+    render();
+  });
   ['insp-qty','insp-press-min','insp-press-max','insp-air','insp-prdk'].forEach(id=>document.getElementById(id).addEventListener('input', ()=>evalInspeksi(pheId)));
+  wirePhotoSlots('#insp-photos', photos);
+  updateInspectionPhotoStatus();
   evalInspeksi(pheId);
   document.getElementById('insp-save').addEventListener('click', ()=>saveInspeksi(pheId));
   renderInspHistory(pheId);
+}
+
+function updateInspectionPhotoStatus(){
+  const arr = state.inspectionPhotos || [];
+  const count = arr.filter(Boolean).length;
+  const el = document.getElementById('insp-photo-status');
+  if(!el) return;
+  el.textContent = count===6 ? '6/6 FOTO LENGKAP — SIAP DISIMPAN' : `${count}/6 foto — semua foto wajib diambil realtime`;
+  el.className = 'field-status ' + (count===6 ? 'ok' : 'nok');
 }
 
 function evalInspeksi(pheId){
@@ -751,17 +816,21 @@ function setFieldStatus(id, isNok){
 function saveInspeksi(pheId){
   const r = evalInspeksi(pheId);
   if(!r.anyFilled){ toast('Isi minimal satu parameter.'); return; }
+  const photos = state.inspectionPhotos || [];
+  if(photos.filter(Boolean).length !== 6){ toast('Inspeksi belum bisa disimpan. Ambil lengkap 6 foto realtime.'); return; }
   const tech = document.getElementById('insp-tech').value.trim();
   if(!tech){ toast('Isi nama teknisi.'); return; }
   STORE.inspections.unshift({
     id: uid(), pheId, timestamp: Date.now(), technician: tech,
     actualQty: r.qty, actualPressMin: r.pressMin, actualPressMax: r.pressMax, actualAir: r.air, actualPrdk: r.prdk,
+    photos: photos.filter(Boolean),
     status: r.anyNok ? 'NOK' : 'OK',
     notes: document.getElementById('insp-notes').value.trim(),
   });
+  state.inspectionPhotos = [null,null,null,null,null,null];
   if(saveStore()){
     state.lastTech = tech;
-    toast('Inspeksi tersimpan.');
+    toast('Inspeksi + 6 foto tersimpan.');
     render();
   }
 }
@@ -769,14 +838,18 @@ function renderInspHistory(pheId){
   const box = document.getElementById('insp-history');
   const rows = STORE.inspections.filter(v=>v.pheId===pheId).slice(0,15);
   if(!rows.length){ box.innerHTML = '<p class="empty">Belum ada data inspeksi untuk PHE ini.</p>'; return; }
-  box.innerHTML = rows.map(v=>`<div class="entry st-${v.status==='OK'?'ok':'nok'}">
-    <div class="top-row">
-      <div><div class="who">${escapeHtml(v.technician||'-')}</div><div class="when">${fmtDate(v.timestamp)}</div></div>
-      <span class="badge ${v.status==='OK'?'ok':'nok'}">${v.status}</span>
-    </div>
-    <div class="detail">Qty ${v.actualQty??'-'} · Min Press ${v.actualPressMin??'-'}mm · Max Press ${v.actualPressMax??'-'}mm · Air ${v.actualAir??'-'}Bar · Produk ${v.actualPrdk??'-'}Bar</div>
-    ${v.notes? `<div class="detail" style="font-family:var(--sans);">${escapeHtml(v.notes)}</div>` : ''}
-  </div>`).join('');
+  box.innerHTML = rows.map(v=>{
+    const thumbs = (v.photos||[]).map(src=>`<img src="${src}">`).join('');
+    return `<div class="entry st-${v.status==='OK'?'ok':'nok'}">
+      <div class="top-row">
+        <div><div class="who">${escapeHtml(v.technician||'-')}</div><div class="when">${fmtDate(v.timestamp)}</div></div>
+        <span class="badge ${v.status==='OK'?'ok':'nok'}">${v.status}</span>
+      </div>
+      <div class="detail">Qty ${v.actualQty??'-'} · Min Press ${v.actualPressMin??'-'}mm · Max Press ${v.actualPressMax??'-'}mm · Air ${v.actualAir??'-'}Bar · Produk ${v.actualPrdk??'-'}Bar</div>
+      ${v.notes? `<div class="detail" style="font-family:var(--sans);">${escapeHtml(v.notes)}</div>` : ''}
+      ${thumbs? '<div class="thumbs">'+thumbs+'</div>' : ''}
+    </div>`;
+  }).join('');
 }
 
 /* ============ COP / CIP ============ */
@@ -788,7 +861,7 @@ function renderActivity(main, type){
   main.innerHTML = `
     <div class="panel accent-teal">
       <h2>${title}</h2>
-      <p class="sub">Catat siklus hidup dari ${type} hingga PHE blocking, tekanan air/produk sebelum &amp; sesudah, dan dokumentasi foto (3 foto masing-masing).</p>
+      <p class="sub">Catat siklus hidup dari ${type} hingga PHE blocking, tekanan air/produk sebelum &amp; sesudah, dan dokumentasi foto realtime (3 foto masing-masing).</p>
       <label>Pilih PHE</label>
       <select id="sel-phe-act">${PHE_LIST.map(p=>`<option value="${p.id}" ${p.id===pheId?'selected':''}>${p.name}</option>`).join('')}</select>
       <div class="seg" style="margin-top:12px;">
@@ -808,18 +881,74 @@ function renderActivity(main, type){
   renderActHistory(pheId, type);
 }
 
-function photoSlotHtml(){ return `<div class="photo-slot"><span class="plus">+</span><input type="file" accept="image/*"></div>`; }
+function photoSlotHtml(label, src){
+  return `<div class="photo-slot" data-photo-label="${escapeHtml(label)}">
+    ${src ? `<img src="${src}"><span class="camera-retake">↻ Retake</span>` : '<span class="plus">+</span>'}
+    <span class="photo-label">${escapeHtml(label)}</span>
+  </div>`;
+}
+
+const cameraState = {stream:null, slot:null, idx:null, storeArr:null};
+function stopCamera(){
+  if(cameraState.stream){ cameraState.stream.getTracks().forEach(t=>t.stop()); cameraState.stream=null; }
+  const video=document.getElementById('camera-video');
+  if(video){ video.pause(); video.srcObject=null; }
+  const modal=document.getElementById('camera-modal');
+  if(modal){ modal.classList.remove('show'); modal.setAttribute('aria-hidden','true'); }
+  cameraState.slot=null; cameraState.idx=null; cameraState.storeArr=null;
+}
+async function openRealtimeCamera(slot, idx, storeArr){
+  stopCamera();
+  cameraState.slot=slot; cameraState.idx=idx; cameraState.storeArr=storeArr;
+  const modal=document.getElementById('camera-modal');
+  const video=document.getElementById('camera-video');
+  const status=document.getElementById('camera-status');
+  const capture=document.getElementById('camera-capture');
+  const title=document.getElementById('camera-title');
+  title.textContent = slot.dataset.photoLabel || 'Ambil foto realtime';
+  status.textContent='Meminta akses kamera perangkat…';
+  capture.disabled=true;
+  modal.classList.add('show'); modal.setAttribute('aria-hidden','false');
+  try{
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error('Browser tidak mendukung kamera realtime.');
+    }
+    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    cameraState.stream=stream;
+    video.srcObject=stream;
+    await video.play();
+    capture.disabled=false;
+    status.textContent='Arahkan kamera ke objek lalu tekan Ambil Foto.';
+  }catch(err){
+    console.error(err);
+    status.textContent='Kamera tidak dapat dibuka. Izinkan akses kamera lalu coba lagi.';
+    toast('Akses kamera diperlukan. Foto tidak bisa diambil dari galeri.');
+  }
+}
+function captureRealtimePhoto(){
+  const video=document.getElementById('camera-video');
+  if(!video || !cameraState.storeArr || cameraState.idx==null || video.readyState<2){ toast('Kamera belum siap.'); return; }
+  const max=MAX_PHOTO_DIM;
+  let w=video.videoWidth, h=video.videoHeight;
+  if(w>h && w>max){h=Math.round(h*max/w);w=max;}
+  else if(h>max){w=Math.round(w*max/h);h=max;}
+  const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+  const ctx=canvas.getContext('2d');
+  ctx.drawImage(video,0,0,w,h);
+  const data=canvas.toDataURL('image/jpeg',JPEG_QUALITY);
+  cameraState.storeArr[cameraState.idx]=data;
+  const slot=cameraState.slot;
+  const arr=cameraState.storeArr;
+  const idx=cameraState.idx;
+  slot.outerHTML=photoSlotHtml(slot.dataset.photoLabel||('Foto '+(idx+1)),data);
+  const newSlot=document.querySelector(`.photo-slot[data-photo-label="${CSS.escape(slot.dataset.photoLabel||('Foto '+(idx+1)))}"]`);
+  if(newSlot){ attachSlotHandler(newSlot,idx,arr); }
+  stopCamera();
+  if(arr===state.inspectionPhotos) updateInspectionPhotoStatus();
+  toast('Foto realtime berhasil diambil.');
+}
 function attachSlotHandler(slot, idx, storeArr){
-  const input = slot.querySelector('input');
-  input.addEventListener('change', async e=>{
-    const file = e.target.files[0]; if(!file) return;
-    slot.innerHTML = `<span class="plus">⏳</span>`;
-    try{
-      storeArr[idx] = await resizeImage(file);
-      slot.innerHTML = `<img src="${storeArr[idx]}"><input type="file" accept="image/*">`;
-    }catch(err){ console.error(err); toast('Gagal memproses foto.'); slot.innerHTML = `<span class="plus">+</span><input type="file" accept="image/*">`; }
-    attachSlotHandler(slot, idx, storeArr);
-  });
+  slot.addEventListener('click', ()=>openRealtimeCamera(slot, idx, storeArr));
 }
 function wirePhotoSlots(containerSel, storeArr){
   document.querySelectorAll(containerSel+' .photo-slot').forEach((slot, idx)=>attachSlotHandler(slot, idx, storeArr));
@@ -835,8 +964,8 @@ function renderActivityStart(pheId, type){
       <div><label>Tekanan Air sebelum (Bar)</label><input type="number" step="0.1" id="act-air-before"></div>
       <div><label>Tekanan Produk sebelum (Bar)</label><input type="number" step="0.1" id="act-prdk-before"></div>
     </div>
-    <label>Foto sebelum (before) — 3 foto</label>
-    <div class="photos" id="photos-before">${photoSlotHtml()}${photoSlotHtml()}${photoSlotHtml()}</div>
+    <label>Foto sebelum (before) — 3 foto realtime</label>
+    <div class="photos" id="photos-before">${photoSlotHtml("Before 1")} ${photoSlotHtml("Before 2")} ${photoSlotHtml("Before 3")}</div>
     <label>Nama teknisi</label>
     <input type="text" id="act-tech" placeholder="Nama teknisi" value="${escapeHtml(state.lastTech||'')}">
     <label>Catatan (opsional)</label>
@@ -885,8 +1014,8 @@ function renderFinishDetail(open){
       <div><label>Tekanan Air sesudah (Bar)</label><input type="number" step="0.1" id="act-air-after"></div>
       <div><label>Tekanan Produk sesudah (Bar)</label><input type="number" step="0.1" id="act-prdk-after"></div>
     </div>
-    <label>Foto sesudah (after) — 3 foto</label>
-    <div class="photos" id="photos-after">${photoSlotHtml()}${photoSlotHtml()}${photoSlotHtml()}</div>
+    <label>Foto sesudah (after) — 3 foto realtime</label>
+    <div class="photos" id="photos-after">${photoSlotHtml("After 1")} ${photoSlotHtml("After 2")} ${photoSlotHtml("After 3")}</div>
     <label>Catatan penutup (opsional)</label>
     <textarea id="act-notes-close" placeholder="Catatan tambahan..."></textarea>
     <button class="btn btn-primary" id="act-close" style="margin-top:14px;">Selesaikan siklus</button>
@@ -1291,6 +1420,11 @@ function renderCharts(s){
     options:{ maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{ x:{ grid:{display:false} }, y:{ beginAtZero:true, ticks:{precision:0}, grid:{color:grid} } } }
   });
 }
+
+document.getElementById('camera-close').addEventListener('click', stopCamera);
+document.getElementById('camera-cancel').addEventListener('click', stopCamera);
+document.getElementById('camera-capture').addEventListener('click', captureRealtimePhoto);
+document.getElementById('camera-modal').addEventListener('click', e=>{ if(e.target.id==='camera-modal') stopCamera(); });
 
 /* ============ boot ============ */
 document.querySelectorAll('nav.bottomnav button').forEach(btn=>{
