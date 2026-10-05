@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
 :root{
   --bg-a:#EAF2FF;
@@ -182,8 +183,15 @@ textarea{resize:vertical; min-height:64px; font-family:var(--sans);}
 .entry .who{font-size:13px; font-weight:750;}
 .entry .when{font-size:11px; color:var(--ink-soft); margin-top:1px; font-family:var(--mono);}
 .entry .detail{font-size:12.5px; color:var(--ink-soft); margin-top:8px; line-height:1.55; font-family:var(--mono);}
-.entry .thumbs{display:flex; gap:6px; margin-top:9px;}
-.entry .thumbs img{width:46px; height:46px; object-fit:cover; border-radius:10px; border:1px solid var(--line);}
+.entry .thumbs{display:flex; gap:6px; margin-top:9px; flex-wrap:wrap;}
+.entry .thumbs img{width:46px; height:46px; object-fit:cover; border-radius:10px; border:1px solid var(--line); background:var(--bg-b);}
+.photo-broken{
+  width:46px; height:46px; border-radius:10px; border:1px solid var(--line); background:var(--bg-b);
+  display:flex; align-items:center; justify-content:center; text-align:center; font-size:8px; line-height:1.3;
+  color:var(--ink-soft); padding:2px;
+}
+.photo-broken a{color:var(--primary); font-weight:700; text-decoration:none;}
+.export-progress{font-size:11.5px; color:var(--ink-soft); font-family:var(--mono); margin-top:8px; min-height:14px;}
 .empty{color:var(--ink-soft); font-size:13px; text-align:center; padding:28px 10px;}
 .note{background:var(--amber-bg); color:#8A5A00; border-radius:14px; padding:12px 14px; font-size:12.5px; margin-bottom:16px; line-height:1.55; border:1px solid #FBD9A6;}
 
@@ -361,7 +369,7 @@ nav.bottomnav button.active svg{color:var(--primary);}
 const STORAGE_KEY = 'phe_panel_v2';
 // Google Apps Script Web App URL untuk backend CI / Google Drive.
 // Isi dengan URL deployment Apps Script kamu.
-const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbwj5nCze7dqZazH2EvtehX8uTLKewka8DRyN__Z05IFABqZvt_TSz5r3iBPWaSFBbQw/exec';
+const GAS_API_URL = 'PASTE_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE';
 const MAX_PHOTO_DIM = 720;
 const JPEG_QUALITY = 0.68;
 let remoteSyncBusy = false;
@@ -546,6 +554,47 @@ function pheName(id){ const p = PHE_LIST.find(x=>x.id===id); return p? p.name : 
 function num(v){ if(v==='' || v==null) return null; const n = parseFloat(String(v).replace(',','.')); return isNaN(n)? null : n; }
 function uid(){ return 'id'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---- foto: deteksi Drive id + fallback berlapis bila satu format URL gagal ----
+   Google Drive kadang menolak satu format link (thumbnail / uc / lh3) tergantung
+   setelan share & beban server. Kalau src pertama gagal dimuat, kita coba format
+   lain secara otomatis sebelum menyerah dan menampilkan tombol "Buka foto". */
+function extractDriveId(url){
+  if(!url) return null;
+  const s = String(url);
+  let m = s.match(/[?&]id=([a-zA-Z0-9_-]{15,})/) || s.match(/\/d\/([a-zA-Z0-9_-]{15,})/);
+  return m ? m[1] : null;
+}
+function driveCandidates(id){
+  return [
+    'https://drive.google.com/thumbnail?id='+id+'&sz=w1600',
+    'https://lh3.googleusercontent.com/d/'+id+'=w1000',
+    'https://drive.google.com/uc?export=view&id='+id,
+  ];
+}
+function photoImgTag(src, cls){
+  if(!src) return '';
+  return `<img class="${cls||''}" src="${escapeHtml(src)}" loading="lazy" data-orig="${escapeHtml(src)}" data-try="0" onerror="handlePhotoError(this)">`;
+}
+function handlePhotoError(img){
+  const id = extractDriveId(img.dataset.orig);
+  if(!id){ showBrokenPhoto(img, null); return; }
+  const tried = Number(img.dataset.try || '0');
+  const candidates = driveCandidates(id).filter(u => u !== img.dataset.orig);
+  if(tried < candidates.length){
+    img.dataset.try = String(tried + 1);
+    img.onerror = function(){ handlePhotoError(img); };
+    img.src = candidates[tried] + '&cb=' + Date.now();
+  } else {
+    showBrokenPhoto(img, id);
+  }
+}
+function showBrokenPhoto(img, id){
+  const wrap = document.createElement('div');
+  wrap.className = 'photo-broken';
+  wrap.innerHTML = id ? `📷<br><a href="https://drive.google.com/file/d/${id}/view" target="_blank" rel="noopener">Buka foto</a>` : '📷<br>Gagal muat';
+  if(img.parentNode) img.replaceWith(wrap);
+}
 
 function resizeImage(file){
   return new Promise((resolve,reject)=>{
@@ -839,7 +888,7 @@ function renderInspHistory(pheId){
   const rows = STORE.inspections.filter(v=>v.pheId===pheId).slice(0,15);
   if(!rows.length){ box.innerHTML = '<p class="empty">Belum ada data inspeksi untuk PHE ini.</p>'; return; }
   box.innerHTML = rows.map(v=>{
-    const thumbs = (v.photos||[]).map(src=>`<img src="${src}">`).join('');
+    const thumbs = (v.photos||[]).map(src=>photoImgTag(src)).join('');
     return `<div class="entry st-${v.status==='OK'?'ok':'nok'}">
       <div class="top-row">
         <div><div class="who">${escapeHtml(v.technician||'-')}</div><div class="when">${fmtDate(v.timestamp)}</div></div>
@@ -1044,7 +1093,7 @@ function renderActHistory(pheId, type){
   const rows = STORE.activities.filter(v=>v.pheId===pheId && v.type===type).slice(0,15);
   if(!rows.length){ box.innerHTML = `<p class="empty">Belum ada riwayat ${type} untuk PHE ini.</p>`; return; }
   box.innerHTML = rows.map(v=>{
-    const thumbs = [...(v.photosBefore||[]), ...(v.photosAfter||[])].map(src=>`<img src="${src}">`).join('');
+    const thumbs = [...(v.photosBefore||[]), ...(v.photosAfter||[])].map(src=>photoImgTag(src)).join('');
     return `<div class="entry st-${v.status==='open'?'open':'ok'}">
       <div class="top-row">
         <div><div class="who">${escapeHtml(v.technician||'-')}</div><div class="when">Mulai ${fmtDateOnly(v.startDate)}${v.endDate? ' → Selesai '+fmtDateOnly(v.endDate) : ''}</div></div>
@@ -1080,8 +1129,9 @@ function renderRiwayat(main){
       </div>
       <div class="dash-toolbar">
         <button class="btn btn-ghost" id="rw-export-csv">⬇ CSV</button>
-        <button class="btn btn-ghost" id="rw-export-xlsx">⬇ Excel (.xlsx)</button>
+        <button class="btn btn-ghost" id="rw-export-xlsx">⬇ Excel + Foto (.xlsx)</button>
       </div>
+      <div class="export-progress" id="export-progress"></div>
       <div class="storage-meter"><i id="storage-bar" style="width:0%"></i></div>
       <div class="storage-txt" id="storage-txt"></div>
     </div>
@@ -1111,7 +1161,7 @@ function fetchAllRiwayat(){
   if(jenis==='all' || jenis==='inspeksi'){
     STORE.inspections.filter(v=>!pheFilter || v.pheId===pheFilter).forEach(v=>{
       rows.push({jenis:'Inspeksi', phe:pheName(v.pheId), tanggal:v.timestamp, teknisi:v.technician, status:v.status,
-        detail:`Qty ${v.actualQty??'-'} / Press ${v.actualPress??'-'}mm / Air ${v.actualAir??'-'}Bar / Produk ${v.actualPrdk??'-'}Bar`});
+        detail:`Qty ${v.actualQty??'-'} / Min Press ${v.actualPressMin??'-'}mm / Max Press ${v.actualPressMax??'-'}mm / Air ${v.actualAir??'-'}Bar / Produk ${v.actualPrdk??'-'}Bar${v.notes? ' / Catatan: '+v.notes : ''}`});
     });
   }
   ['COP','CIP'].forEach(t=>{
@@ -1138,54 +1188,232 @@ function loadRiwayat(){
     <div class="detail">${escapeHtml(r.detail)}</div>
   </div>`).join('');
 }
+/* ============ Export: pengambil data lengkap (tidak dipadatkan jadi satu kolom) ============ */
+function getExportFilters(){
+  return {
+    pheFilter: document.getElementById('rw-phe')?.value || '',
+    jenis: document.getElementById('rw-jenis')?.value || 'all',
+    search: (document.getElementById('rw-search')?.value || '').trim().toLowerCase(),
+  };
+}
+function buildInspectionExportRows(pheFilter, search){
+  return STORE.inspections
+    .filter(v => (!pheFilter || v.pheId===pheFilter) && (!search || (v.technician||'').toLowerCase().includes(search)))
+    .map(v=>{
+      const std = STORE.standards[v.pheId] || {};
+      return {
+        jenis:'Inspeksi', pheId:v.pheId, phe:pheName(v.pheId), tanggal:v.timestamp, teknisi:v.technician||'', status:v.status,
+        qtyAktual:v.actualQty, qtyStandar:std.qtyPlate,
+        minPressAktual:v.actualPressMin, minPressStandar:std.pressMin,
+        maxPressAktual:v.actualPressMax, maxPressStandar:std.pressMax,
+        airAktual:v.actualAir, airStandar:std.airMin,
+        prdkAktual:v.actualPrdk, prdkStandarMin:std.prdkMin, prdkStandarMax:std.prdkMax,
+        catatan:v.notes||'', photos:v.photos||[],
+      };
+    })
+    .sort((a,b)=>(b.tanggal||0)-(a.tanggal||0));
+}
+function buildActivityExportRows(type, pheFilter, search){
+  return STORE.activities
+    .filter(v => v.type===type && (!pheFilter || v.pheId===pheFilter) && (!search || (v.technician||'').toLowerCase().includes(search)))
+    .map(v=>({
+      jenis: type==='COP' ? 'COP' : 'CIP Lokal', pheId:v.pheId, phe:pheName(v.pheId), tanggal:v.createdAt, teknisi:v.technician||'',
+      status: v.status==='open' ? 'Berjalan' : 'Selesai',
+      mulai:v.startDate||'', selesai:v.endDate||'', lifetimeDays:v.lifetimeDays,
+      airBefore:v.airBefore, airAfter:v.airAfter, prdkBefore:v.prdkBefore, prdkAfter:v.prdkAfter,
+      catatan:v.notes||'', photosBefore:v.photosBefore||[], photosAfter:v.photosAfter||[],
+    }))
+    .sort((a,b)=>(b.tanggal||0)-(a.tanggal||0));
+}
+function setExportProgress(text){
+  const el = document.getElementById('export-progress');
+  if(el) el.textContent = text;
+}
+
+/* ============ CSV: semua kolom eksplisit + link foto (tidak ada data yang dipadatkan) ============ */
 function exportRiwayatCSV(){
-  const rows = fetchAllRiwayat();
-  const header = ['Jenis','PHE','Tanggal','Teknisi','Status','Detail'];
-  const csvRows = [header.join(',')].concat(rows.map(r=>[r.jenis,r.phe,fmtDate(r.tanggal),r.teknisi||'',r.status,(r.detail||'').replace(/,/g,';')]
-    .map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')));
-  const blob = new Blob([csvRows.join('\n')], {type:'text/csv;charset=utf-8;'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'riwayat_phe.csv';
-  document.body.appendChild(a); a.click(); a.remove();
-  toast('CSV diunduh.');
-}
+  const {pheFilter, jenis, search} = getExportFilters();
+  const insp = (jenis==='all'||jenis==='inspeksi') ? buildInspectionExportRows(pheFilter, search) : [];
+  const cop = (jenis==='all'||jenis==='COP') ? buildActivityExportRows('COP', pheFilter, search) : [];
+  const cip = (jenis==='all'||jenis==='CIP') ? buildActivityExportRows('CIP', pheFilter, search) : [];
+  const all = [...insp, ...cop, ...cip];
+  if(!all.length){ toast('Tidak ada data untuk diekspor.'); return; }
+  all.sort((a,b)=>(b.tanggal||0)-(a.tanggal||0));
 
-function exportRiwayatExcel(){
-  if(typeof XLSX === 'undefined'){ toast('Modul Excel gagal dimuat — periksa koneksi internet lalu coba lagi.'); return; }
-  const rows = fetchAllRiwayat();
-  if(!rows.length){ toast('Tidak ada data untuk diekspor.'); return; }
-  const sheetData = rows.map(r=>({
-    Jenis:r.jenis, PHE:r.phe, Tanggal:fmtDate(r.tanggal), Teknisi:r.teknisi||'', Status:r.status, Detail:r.detail||''
-  }));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetData), 'Riwayat');
-  XLSX.utils.book_append_sheet(wb, buildSummarySheet(), 'Ringkasan');
-  XLSX.writeFile(wb, 'riwayat_phe_'+todayStr()+'.xlsx');
-  toast('Excel diunduh.');
-}
-
-function buildSummarySheet(){
-  const s = computeDashboardStats();
-  const aoa = [
-    ['Ringkasan PHE Maintenance Tracker', ''],
-    ['Dibuat', fmtDate(Date.now())],
-    [],
-    ['Total Inspeksi', s.totalInspeksi],
-    ['Inspeksi OK', s.okCount],
-    ['Inspeksi NOK', s.nokCount],
-    ['Siklus COP dibuka', s.copOpen],
-    ['Siklus COP selesai', s.copClosed],
-    ['Rata-rata lifetime COP (hari)', s.copAvgLife ?? '-'],
-    ['Siklus CIP dibuka', s.cipOpen],
-    ['Siklus CIP selesai', s.cipClosed],
-    ['Rata-rata lifetime CIP (hari)', s.cipAvgLife ?? '-'],
-    [],
-    ['PHE', 'Jumlah NOK', 'Rata-rata lifetime COP (hari)', 'Rata-rata lifetime CIP (hari)'],
-  ];
-  PHE_LIST.forEach(p=>{
-    aoa.push([p.name, s.perPheNok[p.id]||0, s.perPheLifeCOP[p.id] ?? '-', s.perPheLifeCIP[p.id] ?? '-']);
+  const header = ['Jenis','PHE','Tanggal','Teknisi','Status',
+    'Qty Aktual','Qty Standar','Min Press Aktual (mm)','Min Press Standar (mm)','Max Press Aktual (mm)','Max Press Standar (mm)',
+    'Air Aktual (Bar)','Air Standar (Bar)','Produk Aktual (Bar)','Produk Standar Min (Bar)','Produk Standar Max (Bar)',
+    'Mulai','Selesai','Lifetime (hari)','Air Before (Bar)','Air After (Bar)','Produk Before (Bar)','Produk After (Bar)',
+    'Catatan','Link Foto'];
+  const lines = [header];
+  all.forEach(r=>{
+    if(r.jenis==='Inspeksi'){
+      lines.push([r.jenis, r.phe, fmtDate(r.tanggal), r.teknisi, r.status,
+        r.qtyAktual??'', r.qtyStandar??'', r.minPressAktual??'', r.minPressStandar??'', r.maxPressAktual??'', r.maxPressStandar??'',
+        r.airAktual??'', r.airStandar??'', r.prdkAktual??'', r.prdkStandarMin??'', r.prdkStandarMax??'',
+        '','','','','','','', r.catatan, (r.photos||[]).join(' | ')]);
+    } else {
+      lines.push([r.jenis, r.phe, fmtDate(r.tanggal), r.teknisi, r.status,
+        '','','','','','','','','','','',
+        fmtDateOnly(r.mulai), fmtDateOnly(r.selesai), r.lifetimeDays??'', r.airBefore??'', r.airAfter??'', r.prdkBefore??'', r.prdkAfter??'',
+        r.catatan, [...(r.photosBefore||[]), ...(r.photosAfter||[])].join(' | ')]);
+    }
   });
-  return XLSX.utils.aoa_to_sheet(aoa);
+  const csv = lines.map(row=>row.map(v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'riwayat_phe_'+todayStr()+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  toast('CSV diunduh (termasuk link foto).');
+}
+
+/* ============ Excel (.xlsx) dengan foto ter-embed ============ */
+function blobToBase64_(blob){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onloadend = ()=>resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+async function addPhotoToWorkbook_(workbook, src){
+  try{
+    let base64, extension;
+    if(/^data:image\//.test(src)){
+      const m = src.match(/^data:image\/(\w+);base64,(.*)$/);
+      if(!m) return null;
+      extension = m[1]==='jpg' ? 'jpeg' : m[1];
+      base64 = m[2];
+    } else {
+      const res = await fetch(src, {mode:'cors'});
+      if(!res.ok) return null;
+      const blob = await res.blob();
+      extension = (blob.type.split('/')[1] || 'jpeg').replace('jpg','jpeg');
+      base64 = await blobToBase64_(blob);
+    }
+    if(!['jpeg','png','gif'].includes(extension)) extension = 'jpeg';
+    return workbook.addImage({ base64, extension });
+  }catch(e){
+    console.warn('Gagal memuat foto untuk Excel (kemungkinan diblokir CORS oleh Google Drive):', src, e);
+    return null;
+  }
+}
+async function placePhotoOrLink_(workbook, worksheet, src, rowNumber, colNumber){
+  if(!src) return;
+  const cell = worksheet.getCell(rowNumber, colNumber);
+  const imgId = await addPhotoToWorkbook_(workbook, src);
+  if(imgId != null){
+    worksheet.addImage(imgId, { tl:{ col: colNumber-1, row: rowNumber-1 }, ext:{ width:64, height:64 } });
+  } else {
+    cell.value = { text:'Buka Foto', hyperlink: src };
+    cell.font = { color:{ argb:'FF1447E6' }, underline:true, size:10 };
+  }
+}
+
+async function exportRiwayatExcel(){
+  if(typeof ExcelJS === 'undefined'){ toast('Modul Excel gagal dimuat — periksa koneksi internet lalu coba lagi.'); return; }
+  const {pheFilter, jenis, search} = getExportFilters();
+  const insp = (jenis==='all'||jenis==='inspeksi') ? buildInspectionExportRows(pheFilter, search) : [];
+  const cop = (jenis==='all'||jenis==='COP') ? buildActivityExportRows('COP', pheFilter, search) : [];
+  const cip = (jenis==='all'||jenis==='CIP') ? buildActivityExportRows('CIP', pheFilter, search) : [];
+  if(!insp.length && !cop.length && !cip.length){ toast('Tidak ada data untuk diekspor.'); return; }
+
+  const totalPhotos = insp.reduce((n,r)=>n+(r.photos||[]).length,0)
+    + cop.reduce((n,r)=>n+(r.photosBefore||[]).length+(r.photosAfter||[]).length,0)
+    + cip.reduce((n,r)=>n+(r.photosBefore||[]).length+(r.photosAfter||[]).length,0);
+  let donePhotos = 0;
+  setExportProgress(totalPhotos ? `Menyiapkan Excel… 0/${totalPhotos} foto` : 'Menyiapkan Excel…');
+
+  const btns = document.querySelectorAll('#rw-export-xlsx, #dash-export-xlsx');
+  btns.forEach(b=>{ b.disabled = true; b.dataset.origText = b.textContent; b.textContent = 'Memproses…'; });
+
+  try{
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'PHE Panel';
+    workbook.created = new Date();
+
+    // ---- sheet Inspeksi ----
+    const wsInsp = workbook.addWorksheet('Inspeksi');
+    const inspHeader = ['Tanggal','PHE','Teknisi','Status','Qty Aktual','Qty Standar',
+      'Min Press Aktual (mm)','Min Press Standar (mm)','Max Press Aktual (mm)','Max Press Standar (mm)',
+      'Air Aktual (Bar)','Air Standar (Bar)','Produk Aktual (Bar)','Produk Standar Min (Bar)','Produk Standar Max (Bar)',
+      'Catatan','Foto 1','Foto 2','Foto 3','Foto 4','Foto 5','Foto 6'];
+    wsInsp.addRow(inspHeader).font = { bold:true };
+    wsInsp.columns = inspHeader.map(h=>({ width: /^Foto/.test(h) ? 11 : Math.max(12, h.length+2) }));
+    const inspPhotoColStart = inspHeader.indexOf('Foto 1') + 1;
+    for(const r of insp){
+      const row = wsInsp.addRow([
+        fmtDate(r.tanggal), r.phe, r.teknisi, r.status, r.qtyAktual??'', r.qtyStandar??'',
+        r.minPressAktual??'', r.minPressStandar??'', r.maxPressAktual??'', r.maxPressStandar??'',
+        r.airAktual??'', r.airStandar??'', r.prdkAktual??'', r.prdkStandarMin??'', r.prdkStandarMax??'',
+        r.catatan,
+      ]);
+      row.height = 50;
+      if(r.status==='NOK') row.getCell(4).font = { color:{argb:'FFB3261E'}, bold:true };
+      const photos = (r.photos||[]).slice(0,6);
+      for(let i=0;i<photos.length;i++){
+        await placePhotoOrLink_(workbook, wsInsp, photos[i], row.number, inspPhotoColStart+i);
+        donePhotos++; setExportProgress(`Menyiapkan Excel… ${donePhotos}/${totalPhotos} foto`);
+      }
+    }
+
+    // ---- sheet COP & CIP ----
+    async function buildActivitySheet(name, rows){
+      const ws = workbook.addWorksheet(name);
+      const header = ['Mulai','Selesai','Lifetime (hari)','PHE','Teknisi','Status',
+        'Air Before (Bar)','Air After (Bar)','Produk Before (Bar)','Produk After (Bar)','Catatan',
+        'Foto Before 1','Foto Before 2','Foto Before 3','Foto After 1','Foto After 2','Foto After 3'];
+      ws.addRow(header).font = { bold:true };
+      ws.columns = header.map(h=>({ width: /^Foto/.test(h) ? 11 : Math.max(12, h.length+2) }));
+      const beforeColStart = header.indexOf('Foto Before 1') + 1;
+      const afterColStart = header.indexOf('Foto After 1') + 1;
+      for(const r of rows){
+        const row = ws.addRow([
+          fmtDateOnly(r.mulai), fmtDateOnly(r.selesai), r.lifetimeDays??'', r.phe, r.teknisi, r.status,
+          r.airBefore??'', r.airAfter??'', r.prdkBefore??'', r.prdkAfter??'', r.catatan,
+        ]);
+        row.height = 50;
+        if(r.status==='Berjalan') row.getCell(6).font = { color:{argb:'FFFF9A2E'}, bold:true };
+        const before = (r.photosBefore||[]).slice(0,3);
+        const after = (r.photosAfter||[]).slice(0,3);
+        for(let i=0;i<before.length;i++){ await placePhotoOrLink_(workbook, ws, before[i], row.number, beforeColStart+i); donePhotos++; setExportProgress(`Menyiapkan Excel… ${donePhotos}/${totalPhotos} foto`); }
+        for(let i=0;i<after.length;i++){ await placePhotoOrLink_(workbook, ws, after[i], row.number, afterColStart+i); donePhotos++; setExportProgress(`Menyiapkan Excel… ${donePhotos}/${totalPhotos} foto`); }
+      }
+      return ws;
+    }
+    if(cop.length) await buildActivitySheet('COP', cop);
+    if(cip.length) await buildActivitySheet('CIP Lokal', cip);
+
+    // ---- sheet Ringkasan ----
+    const s = computeDashboardStats();
+    const wsSum = workbook.addWorksheet('Ringkasan');
+    wsSum.columns = [{width:34},{width:16},{width:28},{width:28}];
+    const sumRows = [
+      ['Ringkasan PHE Maintenance Tracker'], ['Dibuat', fmtDate(Date.now())], [],
+      ['Total Inspeksi', s.totalInspeksi], ['Inspeksi OK', s.okCount], ['Inspeksi NOK', s.nokCount],
+      ['Siklus COP dibuka', s.copOpen], ['Siklus COP selesai', s.copClosed], ['Rata-rata lifetime COP (hari)', s.copAvgLife ?? '-'],
+      ['Siklus CIP dibuka', s.cipOpen], ['Siklus CIP selesai', s.cipClosed], ['Rata-rata lifetime CIP (hari)', s.cipAvgLife ?? '-'],
+      [], ['PHE','Jumlah NOK','Rata-rata lifetime COP (hari)','Rata-rata lifetime CIP (hari)'],
+    ];
+    sumRows.forEach(r=>wsSum.addRow(r));
+    wsSum.getRow(1).font = { bold:true, size:13 };
+    wsSum.getRow(14).font = { bold:true };
+    PHE_LIST.forEach(p=>wsSum.addRow([p.name, s.perPheNok[p.id]||0, s.perPheLifeCOP[p.id] ?? '-', s.perPheLifeCIP[p.id] ?? '-']));
+
+    setExportProgress('Menulis berkas .xlsx…');
+    const buf = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'riwayat_phe_'+todayStr()+'.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('Excel diunduh' + (totalPhotos ? ' dengan foto ter-sisip.' : '.'));
+  }catch(e){
+    console.error(e);
+    toast('Gagal membuat Excel: ' + (e.message||e));
+  }finally{
+    setExportProgress('');
+    btns.forEach(b=>{ b.disabled = false; b.textContent = b.dataset.origText || '⬇ Excel + Foto (.xlsx)'; });
+  }
 }
 
 /* ============ Standar ============ */
