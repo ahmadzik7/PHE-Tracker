@@ -191,6 +191,69 @@ textarea{resize:vertical; min-height:64px; font-family:var(--sans);}
   color:var(--ink-soft); padding:2px;
 }
 .photo-broken a{color:var(--primary); font-weight:700; text-decoration:none;}
+
+/* ---- riwayat: foto gallery + fullscreen preview ---- */
+.entry .history-photo{
+  width:58px; height:58px; object-fit:cover; border-radius:11px;
+  border:1px solid var(--line); background:var(--bg-b); cursor:pointer;
+  transition:transform .12s, box-shadow .12s;
+}
+.entry .history-photo:active{transform:scale(.95);}
+.entry .history-photo:hover{box-shadow:0 4px 14px rgba(20,71,230,.18);}
+.history-photo-wrap{position:relative; width:58px; height:58px; flex:none;}
+.history-photo-wrap{
+  position:relative; width:120px; height:108px; flex:none;
+  display:flex; flex-direction:column; gap:5px;
+}
+.history-photo-label{
+  font:600 9px var(--mono); color:var(--muted); text-align:center;
+}
+.history-thumbs{
+  display:grid !important;
+  grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+  gap:10px; margin-top:12px;
+}
+.history-thumbs .history-photo{
+  width:120px; height:88px; border-radius:11px;
+}
+.history-photo-count{
+  position:absolute; right:-4px; bottom:-4px; min-width:20px; height:20px;
+  padding:0 5px; border-radius:10px; background:var(--primary); color:#fff;
+  font:700 10px var(--mono); display:flex; align-items:center; justify-content:center;
+  border:2px solid #fff;
+}
+.photo-preview-modal{
+  position:fixed; inset:0; z-index:120; background:rgba(5,8,15,.94);
+  display:none; align-items:center; justify-content:center; padding:18px;
+}
+.photo-preview-modal.show{display:flex;}
+.photo-preview-card{
+  width:min(900px,100%); height:min(92vh,900px); position:relative;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+.photo-preview-img{
+  max-width:100%; max-height:calc(100% - 70px); object-fit:contain;
+  border-radius:14px; box-shadow:0 18px 60px rgba(0,0,0,.45);
+}
+.photo-preview-head{
+  position:absolute; top:0; left:0; right:0; display:flex;
+  align-items:center; justify-content:space-between; gap:10px; color:#fff;
+}
+.photo-preview-title{font-size:13px; font-weight:750;}
+.photo-preview-close{
+  width:40px; height:40px; border:0; border-radius:12px;
+  background:rgba(255,255,255,.14); color:#fff; font-size:23px; cursor:pointer;
+}
+.photo-preview-nav{
+  position:absolute; left:0; right:0; bottom:0; display:flex;
+  align-items:center; justify-content:center; gap:10px;
+}
+.photo-preview-nav button{
+  border:0; border-radius:11px; padding:9px 14px; cursor:pointer;
+  background:rgba(255,255,255,.14); color:#fff; font-weight:750;
+}
+.photo-preview-nav button:disabled{opacity:.35; cursor:not-allowed;}
+.photo-preview-index{color:rgba(255,255,255,.82); font:600 11px var(--mono);}
 .export-progress{font-size:11.5px; color:var(--ink-soft); font-family:var(--mono); margin-top:8px; min-height:14px;}
 .empty{color:var(--ink-soft); font-size:13px; text-align:center; padding:28px 10px;}
 .note{background:var(--amber-bg); color:#8A5A00; border-radius:14px; padding:12px 14px; font-size:12.5px; margin-bottom:16px; line-height:1.55; border:1px solid #FBD9A6;}
@@ -322,6 +385,20 @@ nav.bottomnav button.active svg{color:var(--primary);}
 </header>
 
 <main id="main"></main>
+<div class="photo-preview-modal" id="photo-preview-modal" aria-hidden="true">
+  <div class="photo-preview-card">
+    <div class="photo-preview-head">
+      <strong class="photo-preview-title" id="photo-preview-title">Preview Foto</strong>
+      <button class="photo-preview-close" id="photo-preview-close" type="button" aria-label="Tutup">×</button>
+    </div>
+    <img class="photo-preview-img" id="photo-preview-img" alt="Preview foto">
+    <div class="photo-preview-nav">
+      <button id="photo-preview-prev" type="button">‹ Sebelumnya</button>
+      <span class="photo-preview-index" id="photo-preview-index">1 / 1</span>
+      <button id="photo-preview-next" type="button">Berikutnya ›</button>
+    </div>
+  </div>
+</div>
 <div class="camera-modal" id="camera-modal" aria-hidden="true">
   <div class="camera-card">
     <div class="camera-head">
@@ -594,6 +671,76 @@ function showBrokenPhoto(img, id){
   wrap.className = 'photo-broken';
   wrap.innerHTML = id ? `📷<br><a href="https://drive.google.com/file/d/${id}/view" target="_blank" rel="noopener">Buka foto</a>` : '📷<br>Gagal muat';
   if(img.parentNode) img.replaceWith(wrap);
+}
+
+/* ---- preview foto dari Riwayat ---- */
+const photoPreviewState = { photos:[], index:0, title:'' };
+
+function openPhotoPreview(photos, index=0, title='Preview Foto'){
+  const arr = (photos||[]).filter(Boolean);
+  if(!arr.length) return;
+  photoPreviewState.photos = arr;
+  photoPreviewState.index = Math.max(0, Math.min(index, arr.length-1));
+  photoPreviewState.title = title;
+
+  const modal = document.getElementById('photo-preview-modal');
+  if(!modal) return;
+  modal.classList.add('show');
+  modal.setAttribute('aria-hidden','false');
+  renderPhotoPreview();
+}
+
+function renderPhotoPreview(){
+  const photos = photoPreviewState.photos;
+  const idx = photoPreviewState.index;
+  const img = document.getElementById('photo-preview-img');
+  const title = document.getElementById('photo-preview-title');
+  const counter = document.getElementById('photo-preview-index');
+  const prev = document.getElementById('photo-preview-prev');
+  const next = document.getElementById('photo-preview-next');
+  if(!img || !photos.length) return;
+
+  img.src = photos[idx];
+  img.dataset.orig = photos[idx];
+  img.onerror = function(){
+    const id = extractDriveId(this.dataset.orig);
+    if(id){
+      const candidates = driveCandidates(id);
+      const current = this.dataset.previewTry ? Number(this.dataset.previewTry) : 0;
+      if(current < candidates.length){
+        this.dataset.previewTry = String(current + 1);
+        this.src = candidates[current];
+        return;
+      }
+    }
+    this.alt = 'Foto tidak dapat dimuat';
+  };
+  img.dataset.previewTry = '0';
+  title.textContent = photoPreviewState.title || 'Preview Foto';
+  counter.textContent = `${idx+1} / ${photos.length}`;
+  prev.disabled = idx===0;
+  next.disabled = idx===photos.length-1;
+}
+
+function closePhotoPreview(){
+  const modal = document.getElementById('photo-preview-modal');
+  if(modal){
+    modal.classList.remove('show');
+    modal.setAttribute('aria-hidden','true');
+  }
+  photoPreviewState.photos = [];
+  photoPreviewState.index = 0;
+}
+
+function bindHistoryPhotoClicks(root=document){
+  root.querySelectorAll('.history-photo').forEach(img=>{
+    img.addEventListener('click', e=>{
+      e.stopPropagation();
+      let photos = [];
+      try { photos = JSON.parse(img.dataset.photos || '[]'); } catch(_){}
+      openPhotoPreview(photos, Number(img.dataset.photoIndex||0), img.dataset.photoTitle || 'Preview Foto');
+    });
+  });
 }
 
 function resizeImage(file){
@@ -1161,6 +1308,7 @@ function fetchAllRiwayat(){
   if(jenis==='all' || jenis==='inspeksi'){
     STORE.inspections.filter(v=>!pheFilter || v.pheId===pheFilter).forEach(v=>{
       rows.push({jenis:'Inspeksi', phe:pheName(v.pheId), tanggal:v.timestamp, teknisi:v.technician, status:v.status,
+        photos:Array.isArray(v.photos)?v.photos:[], photoTitle:`${pheName(v.pheId)} · Inspeksi`,
         detail:`Qty ${v.actualQty??'-'} / Min Press ${v.actualPressMin??'-'}mm / Max Press ${v.actualPressMax??'-'}mm / Air ${v.actualAir??'-'}Bar / Produk ${v.actualPrdk??'-'}Bar${v.notes? ' / Catatan: '+v.notes : ''}`});
     });
   }
@@ -1169,6 +1317,8 @@ function fetchAllRiwayat(){
       STORE.activities.filter(v=>v.type===t && (!pheFilter || v.pheId===pheFilter)).forEach(v=>{
         rows.push({jenis:t==='COP'?'COP':'CIP Lokal', phe:pheName(v.pheId), tanggal:v.createdAt, teknisi:v.technician,
           status:v.status==='open'?'Berjalan':'Selesai ('+(v.lifetimeDays??'-')+' hari)',
+          photos:[...(Array.isArray(v.photosBefore)?v.photosBefore:[]), ...(Array.isArray(v.photosAfter)?v.photosAfter:[])],
+          photoTitle:`${pheName(v.pheId)} · ${t==='COP'?'COP':'CIP Lokal'}`,
           detail:`Mulai ${fmtDateOnly(v.startDate)}${v.endDate?' - Selesai '+fmtDateOnly(v.endDate):''}`});
       });
     }
@@ -1180,13 +1330,35 @@ function loadRiwayat(){
   const box = document.getElementById('rw-list');
   const rows = fetchAllRiwayat();
   if(!rows.length){ box.innerHTML = '<p class="empty">Tidak ada data.</p>'; return; }
-  box.innerHTML = rows.map(r=>`<div class="entry st-${/nok/i.test(r.status)?'nok': /berjalan/i.test(r.status)?'open':'ok'}">
-    <div class="top-row">
-      <div><div class="who">${escapeHtml(r.phe)} — ${r.jenis}</div><div class="when">${fmtDate(r.tanggal)} · ${escapeHtml(r.teknisi||'-')}</div></div>
-      <span class="badge ${/nok/i.test(r.status)?'nok': /berjalan/i.test(r.status)?'open':'ok'}">${r.status}</span>
-    </div>
-    <div class="detail">${escapeHtml(r.detail)}</div>
-  </div>`).join('');
+  box.innerHTML = rows.map((r, rowIndex)=>{
+    const photos = Array.isArray(r.photos) ? r.photos.filter(Boolean) : [];
+    const photoData = escapeHtml(JSON.stringify(photos));
+    const thumbs = photos.map((src,i)=>`
+      <div class="history-photo-wrap">
+        <img class="history-photo" src="${escapeHtml(src)}" alt="Foto ${i+1}"
+          data-photos="${photoData}" data-photo-index="${i}" data-photo-title="${escapeHtml(r.photoTitle||'Preview Foto')}"
+          data-orig="${escapeHtml(src)}" data-try="0" onerror="handlePhotoError(this)">
+        <span class="history-photo-label">Foto ${i+1}</span>
+      </div>
+    `).join('');
+    return `<div class="entry st-${/nok/i.test(r.status)?'nok': /berjalan/i.test(r.status)?'open':'ok'}">
+      <div class="top-row">
+        <div><div class="who">${escapeHtml(r.phe)} — ${r.jenis}</div><div class="when">${fmtDate(r.tanggal)} · ${escapeHtml(r.teknisi||'-')}</div></div>
+        <span class="badge ${/nok/i.test(r.status)?'nok': /berjalan/i.test(r.status)?'open':'ok'}">${r.status}</span>
+      </div>
+      <div class="detail">${escapeHtml(r.detail)}</div>
+      ${photos.length ? `<div class="thumbs history-thumbs" data-row="${rowIndex}">${thumbs}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  box.querySelectorAll('.history-photo-wrap img.history-photo').forEach(img=>{
+    img.addEventListener('click', e=>{
+      e.stopPropagation();
+      let photos = [];
+      try { photos = JSON.parse(img.dataset.photos || '[]'); } catch(_){}
+      openPhotoPreview(photos, Number(img.dataset.photoIndex||0), img.dataset.photoTitle || 'Preview Foto');
+    });
+  });
 }
 /* ============ Export: pengambil data lengkap (tidak dipadatkan jadi satu kolom) ============ */
 function getExportFilters(){
@@ -1653,6 +1825,24 @@ document.getElementById('camera-close').addEventListener('click', stopCamera);
 document.getElementById('camera-cancel').addEventListener('click', stopCamera);
 document.getElementById('camera-capture').addEventListener('click', captureRealtimePhoto);
 document.getElementById('camera-modal').addEventListener('click', e=>{ if(e.target.id==='camera-modal') stopCamera(); });
+
+document.getElementById('photo-preview-close').addEventListener('click', closePhotoPreview);
+document.getElementById('photo-preview-prev').addEventListener('click', ()=>{
+  if(photoPreviewState.index>0){ photoPreviewState.index--; renderPhotoPreview(); }
+});
+document.getElementById('photo-preview-next').addEventListener('click', ()=>{
+  if(photoPreviewState.index<photoPreviewState.photos.length-1){ photoPreviewState.index++; renderPhotoPreview(); }
+});
+document.getElementById('photo-preview-modal').addEventListener('click', e=>{
+  if(e.target.id==='photo-preview-modal') closePhotoPreview();
+});
+document.addEventListener('keydown', e=>{
+  const modal=document.getElementById('photo-preview-modal');
+  if(!modal || !modal.classList.contains('show')) return;
+  if(e.key==='Escape') closePhotoPreview();
+  if(e.key==='ArrowLeft' && photoPreviewState.index>0){ photoPreviewState.index--; renderPhotoPreview(); }
+  if(e.key==='ArrowRight' && photoPreviewState.index<photoPreviewState.photos.length-1){ photoPreviewState.index++; renderPhotoPreview(); }
+});
 
 /* ============ boot ============ */
 document.querySelectorAll('nav.bottomnav button').forEach(btn=>{
